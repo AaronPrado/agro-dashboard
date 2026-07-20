@@ -1,0 +1,32 @@
+name: CI
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+
+jobs:
+    backend:
+        name: Backend (lint + test)
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Preparar .env de CI
+              run: |
+                  cat > backend/.env <<'EOF'
+                  DJANGO_SECRET_KEY=ci-insecure-key-not-for-production-0123456789
+                  DJANGO_DEBUG=False
+                  DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+                  POSTGRES_DB=agro
+                  POSTGRES_USER=agro
+                  POSTGRES_PASSWORD=ci-postgres-password
+                  POSTGRES_HOST=localhost
+                  POSTGRES_PORT=5432
+                  EOF
+
+            - name: Lint (ruff)
+              run: make lint
+
+            - name: Test (pytest)
+              run: make test
