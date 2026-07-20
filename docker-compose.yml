@@ -14,7 +14,7 @@ services:
 
   web:
     build: ./backend
-    user: "${UID:-1000}:${GID:-1000}"
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     restart: unless-stopped
     env_file:
       - ./backend/.env
