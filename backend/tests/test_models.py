@@ -4,9 +4,9 @@ import datetime
 from decimal import Decimal
 
 import pytest
-from django.db import IntegrityError
+from django.db import DataError, IntegrityError
 
-from farms.models import Animal, Farm, Milking
+from farms.models import Animal, Farm, Milking, MilkRecord
 
 
 @pytest.fixture
@@ -241,3 +241,91 @@ def test_milking_borrado_en_cascada_al_borrar_la_granja(farm, animal):
     farm.delete()
 
     assert Milking.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_milk_record_str_identifica_animal_y_fecha(animal):
+    """El control se identifica por animal y fecha, que además son su clave única."""
+    record = MilkRecord.objects.create(animal=animal, date=datetime.date(2024, 5, 1))
+
+    assert str(record) == "ES0001 · control 2024-05-01"
+
+
+@pytest.mark.django_db
+def test_milk_record_un_control_por_animal_y_fecha(animal):
+    """El control lechero es mensual: no hay dos analíticas del mismo día."""
+    MilkRecord.objects.create(animal=animal, date=datetime.date(2024, 5, 1))
+
+    with pytest.raises(IntegrityError):
+        MilkRecord.objects.create(animal=animal, date=datetime.date(2024, 5, 1))
+
+
+@pytest.mark.django_db
+def test_milk_record_rechaza_porcentaje_negativo(animal):
+    """Lo cubre el CheckConstraint: numeric acepta negativos, el dominio no."""
+    with pytest.raises(IntegrityError):
+        MilkRecord.objects.create(
+            animal=animal, date=datetime.date(2024, 5, 1), fat_pct=Decimal("-1.00")
+        )
+
+
+@pytest.mark.django_db
+def test_milk_record_rechaza_porcentaje_por_encima_de_cien(animal):
+    """Lo cubre el propio tipo: numeric(4, 2) no representa valores >= 100.
+
+    De ahí que el constraint solo vigile el límite inferior; el superior ya
+    lo impone la columna, y el error que llega es DataError, no IntegrityError.
+    """
+    with pytest.raises(DataError):
+        MilkRecord.objects.create(
+            animal=animal, date=datetime.date(2024, 5, 1), fat_pct=Decimal("120.00")
+        )
+
+
+@pytest.mark.django_db
+def test_milk_record_admite_valores_atipicos_dentro_del_rango(animal):
+    """El generador crea outliers a propósito: la BD no debe estorbarlos."""
+    record = MilkRecord.objects.create(
+        animal=animal,
+        date=datetime.date(2024, 5, 1),
+        fat_pct=Decimal("6.80"),
+        protein_pct=Decimal("2.10"),
+        somatic_cell_count=1_500_000,
+    )
+
+    assert record.fat_pct == Decimal("6.80")
+    assert record.somatic_cell_count == 1_500_000
+
+
+@pytest.mark.django_db
+def test_milk_record_admite_analitica_incompleta(animal):
+    """Una analítica no disponible se representa con NULL, no con ceros."""
+    record = MilkRecord.objects.create(animal=animal, date=datetime.date(2024, 5, 1))
+
+    assert record.fat_pct is None
+    assert record.protein_pct is None
+    assert record.somatic_cell_count is None
+
+
+def test_milk_record_limite_legal_de_celulas_somaticas():
+    """El umbral del Reglamento (CE) 853/2004 vive en el modelo, no en las vistas."""
+    assert MilkRecord.LEGAL_SCC_LIMIT == 400_000
+
+
+@pytest.mark.django_db
+def test_milk_records_accesibles_desde_el_animal(animal):
+    """related_name="milk_records" separa los controles de los ordeños."""
+    MilkRecord.objects.create(animal=animal, date=datetime.date(2024, 4, 1))
+    MilkRecord.objects.create(animal=animal, date=datetime.date(2024, 5, 1))
+
+    assert animal.milk_records.count() == 2
+
+
+@pytest.mark.django_db
+def test_milk_record_borrado_en_cascada_al_borrar_el_animal(animal):
+    """Una analítica sin animal al que atribuirla no significa nada."""
+    MilkRecord.objects.create(animal=animal, date=datetime.date(2024, 5, 1))
+
+    animal.delete()
+
+    assert MilkRecord.objects.count() == 0

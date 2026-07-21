@@ -98,3 +98,53 @@ class Milking(models.Model):
 
     def __str__(self) -> str:
         return f"{self.animal.ear_tag} · {self.date} · {self.liters} L"
+
+
+class MilkRecord(models.Model):
+    """Control lechero mensual: analítica de calidad de la leche de un animal."""
+
+    # Límite legal de células somáticas en leche cruda de vaca en la UE,
+    # fijado por el Reglamento (CE) 853/2004. Base del umbral de alerta.
+    LEGAL_SCC_LIMIT = 400_000
+
+    animal = models.ForeignKey(
+        Animal,
+        verbose_name="animal",
+        on_delete=models.CASCADE,
+        related_name="milk_records",
+    )
+    date = models.DateField("fecha del control")
+    fat_pct = models.DecimalField(
+        "grasa (%)", max_digits=4, decimal_places=2, null=True, blank=True
+    )
+    protein_pct = models.DecimalField(
+        "proteína (%)", max_digits=4, decimal_places=2, null=True, blank=True
+    )
+    somatic_cell_count = models.PositiveIntegerField(
+        "células somáticas (células/ml)", null=True, blank=True
+    )
+
+    class Meta:
+        verbose_name = "control lechero"
+        verbose_name_plural = "controles lecheros"
+        ordering = ["-date", "animal"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["animal", "date"],
+                name="farms_milkrecord_unique_animal_date",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(fat_pct__isnull=True) | models.Q(fat_pct__gte=0),
+                name="farms_milkrecord_fat_pct_not_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(protein_pct__isnull=True) | models.Q(protein_pct__gte=0),
+                name="farms_milkrecord_protein_pct_not_negative",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["date"], name="farms_milkrecord_date_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.animal.ear_tag} · control {self.date}"
