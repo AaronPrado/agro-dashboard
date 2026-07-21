@@ -15,8 +15,15 @@ El modelo de datos gira en torno a la explotación lechera:
 - **Granja** — la explotación.
 - **Animal** — cada vaca, identificada por su crotal, perteneciente a una granja.
 - **Ordeño** — producción diaria de cada animal (litros).
-- **Control lechero** — analítica mensual de cada animal: grasa, proteína y
-  recuento de células somáticas.
+- **Control lechero** — analítica mensual de cada animal: grasa y proteína (en
+  porcentaje) y recuento de células somáticas (en células/ml, la unidad en la que
+  el Reglamento (CE) 853/2004 fija el límite de 400.000 para la leche cruda de
+  vaca; ese umbral es la base de las alertas de calidad).
+
+Las reglas que no deben violarse nunca —un crotal no repetido dentro de la misma
+granja, un único registro de producción por animal y día, litros y porcentajes no
+negativos— se declaran como restricciones en la propia base de datos, de modo que
+también las respete cualquier carga masiva de datos.
 
 Los datos son **mockeados pero realistas**: la producción sigue la curva de
 lactación (pico tras el parto y descenso hasta el secado), con variación por raza
