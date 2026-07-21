@@ -1,9 +1,22 @@
 """Tests de los modelos del dominio: representación, restricciones y relaciones."""
 
+import datetime
+
 import pytest
 from django.db import IntegrityError
 
-from farms.models import Farm
+from farms.models import Animal, Farm
+
+
+@pytest.fixture
+def farm(db):
+    """Granja base sobre la que colgar animales en los tests."""
+    return Farm.objects.create(
+        name="Casa Grande",
+        code="casa-grande",
+        municipality="Sarria",
+        province="Lugo",
+    )
 
 
 @pytest.mark.django_db
@@ -55,3 +68,98 @@ def test_farm_created_at_se_rellena_sola():
     )
 
     assert farm.created_at is not None
+
+
+@pytest.mark.django_db
+def test_animal_str_muestra_crotal_y_raza_legible():
+    """get_breed_display() traduce el valor de BD a la etiqueta en castellano."""
+    farm = Farm.objects.create(name="A", code="a", municipality="Sarria", province="Lugo")
+    animal = Animal.objects.create(
+        farm=farm,
+        ear_tag="ES1234567890",
+        birth_date=datetime.date(2021, 3, 1),
+        breed=Animal.Breed.BROWN_SWISS,
+    )
+
+    assert str(animal) == "ES1234567890 (Parda Alpina)"
+
+
+@pytest.mark.django_db
+def test_animal_crotal_unico_dentro_de_la_granja(farm):
+    """El UniqueConstraint (farm, ear_tag) lo impone la base de datos."""
+    Animal.objects.create(farm=farm, ear_tag="ES0001", birth_date=datetime.date(2021, 3, 1))
+
+    with pytest.raises(IntegrityError):
+        Animal.objects.create(farm=farm, ear_tag="ES0001", birth_date=datetime.date(2022, 5, 4))
+
+
+@pytest.mark.django_db
+def test_animal_mismo_crotal_permitido_en_granjas_distintas(farm):
+    """La unicidad es por granja (decisión D2), no global."""
+    otra = Farm.objects.create(
+        name="Outeiro", code="outeiro", municipality="Lalín", province="Pontevedra"
+    )
+    Animal.objects.create(farm=farm, ear_tag="ES0001", birth_date=datetime.date(2021, 3, 1))
+
+    Animal.objects.create(farm=otra, ear_tag="ES0001", birth_date=datetime.date(2021, 3, 1))
+
+    assert Animal.objects.filter(ear_tag="ES0001").count() == 2
+
+
+@pytest.mark.django_db
+def test_animal_no_admite_baja_anterior_al_nacimiento(farm):
+    """El CheckConstraint protege de fechas incoherentes aunque se inserte sin validar."""
+    with pytest.raises(IntegrityError):
+        Animal.objects.create(
+            farm=farm,
+            ear_tag="ES0002",
+            birth_date=datetime.date(2022, 1, 1),
+            culled_date=datetime.date(2021, 12, 31),
+        )
+
+
+@pytest.mark.django_db
+def test_animal_en_activo_pasa_la_validacion_del_constraint(farm):
+    """La rama `culled_date IS NULL` del CheckConstraint existe por esto.
+
+    En SQL sobra: `NULL >= birth_date` evalúa a NULL y un CHECK solo falla si
+    da FALSE. Pero full_clean() evalúa la condición como un booleano de Python,
+    donde ese NULL es falsy: sin esa rama, todo animal sin fecha de baja sería
+    rechazado por el admin y los formularios.
+    """
+    animal = Animal(farm=farm, ear_tag="ES0003", birth_date=datetime.date(2021, 3, 1))
+
+    animal.full_clean()
+
+
+@pytest.mark.django_db
+def test_animal_accesible_desde_la_granja_por_related_name(farm):
+    """related_name="animals" es el camino inverso que usarán los agregados."""
+    Animal.objects.create(farm=farm, ear_tag="ES0001", birth_date=datetime.date(2021, 3, 1))
+    Animal.objects.create(farm=farm, ear_tag="ES0002", birth_date=datetime.date(2021, 4, 2))
+
+    assert farm.animals.count() == 2
+
+
+@pytest.mark.django_db
+def test_animales_en_activo_son_los_que_no_tienen_fecha_de_baja(farm):
+    """Sin campo `active`: el estado se deriva de culled_date."""
+    Animal.objects.create(farm=farm, ear_tag="ES0001", birth_date=datetime.date(2021, 3, 1))
+    Animal.objects.create(
+        farm=farm,
+        ear_tag="ES0002",
+        birth_date=datetime.date(2021, 4, 2),
+        culled_date=datetime.date(2024, 6, 1),
+    )
+
+    assert farm.animals.filter(culled_date__isnull=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_animal_borrado_en_cascada_al_borrar_la_granja(farm):
+    """on_delete=CASCADE: un animal sin granja no significa nada."""
+    Animal.objects.create(farm=farm, ear_tag="ES0001", birth_date=datetime.date(2021, 3, 1))
+
+    farm.delete()
+
+    assert Animal.objects.count() == 0

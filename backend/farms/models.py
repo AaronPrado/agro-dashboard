@@ -19,3 +19,48 @@ class Farm(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.code})"
+
+
+class Animal(models.Model):
+    """Vaca de una explotación, identificada por su crotal."""
+
+    class Breed(models.TextChoices):
+        """Razas presentes en el vacuno de leche gallego."""
+
+        HOLSTEIN = "holstein", "Frisona"
+        JERSEY = "jersey", "Jersey"
+        PROCROSS = "procross", "Procross"
+        BROWN_SWISS = "brown_swiss", "Parda Alpina"
+        OTHER = "other", "Otra"
+
+    farm = models.ForeignKey(
+        Farm,
+        verbose_name="granja",
+        on_delete=models.CASCADE,
+        related_name="animals",
+    )
+    ear_tag = models.CharField("crotal", max_length=20)
+    birth_date = models.DateField("fecha de nacimiento")
+    breed = models.CharField("raza", max_length=11, choices=Breed, default=Breed.HOLSTEIN)
+    lactation_number = models.PositiveSmallIntegerField("número de lactación", default=0)
+    last_calving_date = models.DateField("último parto", null=True, blank=True)
+    culled_date = models.DateField("fecha de baja", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "animal"
+        verbose_name_plural = "animales"
+        ordering = ["farm", "ear_tag"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["farm", "ear_tag"],
+                name="farms_animal_unique_farm_ear_tag",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(culled_date__isnull=True)
+                | models.Q(culled_date__gte=models.F("birth_date")),
+                name="farms_animal_culled_after_birth",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.ear_tag} ({self.get_breed_display()})"
