@@ -27,8 +27,9 @@ logs:  ## Sigue los logs del backend
 migrate:  ## Aplica migraciones
 	$(COMPOSE) run --rm $(SERVICE) python manage.py migrate
 
-makemigrations:  ## Genera migraciones a partir de los modelos
+makemigrations:  ## Genera migraciones a partir de los modelos y las formatea
 	$(COMPOSE) run --rm $(SERVICE) python manage.py makemigrations
+	$(MAKE) format
 
 shell:  ## Abre la shell de Django
 	$(COMPOSE) run --rm $(SERVICE) python manage.py shell
