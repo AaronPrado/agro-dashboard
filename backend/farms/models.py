@@ -64,3 +64,37 @@ class Animal(models.Model):
 
     def __str__(self) -> str:
         return f"{self.ear_tag} ({self.get_breed_display()})"
+
+
+class Milking(models.Model):
+    """Producción diaria registrada para un animal."""
+
+    animal = models.ForeignKey(
+        Animal,
+        verbose_name="animal",
+        on_delete=models.CASCADE,
+        related_name="milkings",
+    )
+    date = models.DateField("fecha")
+    liters = models.DecimalField("litros", max_digits=5, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        verbose_name = "ordeño"
+        verbose_name_plural = "ordeños"
+        ordering = ["-date", "animal"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["animal", "date"],
+                name="farms_milking_unique_animal_date",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(liters__isnull=True) | models.Q(liters__gte=0),
+                name="farms_milking_liters_not_negative",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["date"], name="farms_milking_date_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.animal.ear_tag} · {self.date} · {self.liters} L"

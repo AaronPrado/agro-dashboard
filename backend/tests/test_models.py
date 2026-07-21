@@ -1,11 +1,12 @@
 """Tests de los modelos del dominio: representación, restricciones y relaciones."""
 
 import datetime
+from decimal import Decimal
 
 import pytest
 from django.db import IntegrityError
 
-from farms.models import Animal, Farm
+from farms.models import Animal, Farm, Milking
 
 
 @pytest.fixture
@@ -16,6 +17,16 @@ def farm(db):
         code="casa-grande",
         municipality="Sarria",
         province="Lugo",
+    )
+
+
+@pytest.fixture
+def animal(farm):
+    """Animal base sobre el que colgar registros de producción."""
+    return Animal.objects.create(
+        farm=farm,
+        ear_tag="ES0001",
+        birth_date=datetime.date(2021, 3, 1),
     )
 
 
@@ -163,3 +174,70 @@ def test_animal_borrado_en_cascada_al_borrar_la_granja(farm):
     farm.delete()
 
     assert Animal.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_milking_str_resume_animal_fecha_y_litros(animal):
+    """Etiqueta legible para el admin, donde los ordeños se listan en masa."""
+    milking = Milking.objects.create(
+        animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40")
+    )
+
+    assert str(milking) == "ES0001 · 2024-05-10 · 28.40 L"
+
+
+@pytest.mark.django_db
+def test_milking_un_registro_por_animal_y_dia(animal):
+    """Decisión F1: la granularidad es diaria, y la BD la impone."""
+    Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40"))
+
+    with pytest.raises(IntegrityError):
+        Milking.objects.create(
+            animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("12.00")
+        )
+
+
+@pytest.mark.django_db
+def test_milking_rechaza_litros_negativos(animal):
+    """Una producción negativa es corrupción, no un dato atípico."""
+    with pytest.raises(IntegrityError):
+        Milking.objects.create(
+            animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("-1.00")
+        )
+
+
+@pytest.mark.django_db
+def test_milking_admite_litros_nulos_para_medicion_fallida(animal):
+    """NULL distingue "no se midió" de "produjo cero", que no es lo mismo."""
+    milking = Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 10), liters=None)
+
+    assert milking.liters is None
+
+
+@pytest.mark.django_db
+def test_milking_los_litros_llegan_como_decimal_exacto(animal):
+    """DecimalField, no FloatField: la agregación posterior debe ser exacta."""
+    Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40"))
+
+    assert Milking.objects.get().liters == Decimal("28.40")
+
+
+@pytest.mark.django_db
+def test_milking_ordenacion_por_defecto_mas_reciente_primero(animal):
+    """El dashboard mira los últimos días; el desempate mantiene estable la paginación."""
+    Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 9), liters=Decimal("20.00"))
+    Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 11), liters=Decimal("22.00"))
+
+    fechas = [milking.date for milking in Milking.objects.all()]
+
+    assert fechas == [datetime.date(2024, 5, 11), datetime.date(2024, 5, 9)]
+
+
+@pytest.mark.django_db
+def test_milking_borrado_en_cascada_al_borrar_la_granja(farm, animal):
+    """El borrado en cascada alcanza dos niveles: granja → animal → ordeños."""
+    Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40"))
+
+    farm.delete()
+
+    assert Milking.objects.count() == 0
