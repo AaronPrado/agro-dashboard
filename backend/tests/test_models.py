@@ -9,27 +9,6 @@ from django.db import DataError, IntegrityError
 from farms.models import Animal, Farm, Milking, MilkRecord
 
 
-@pytest.fixture
-def farm(db):
-    """Granja base sobre la que colgar animales en los tests."""
-    return Farm.objects.create(
-        name="Casa Grande",
-        code="casa-grande",
-        municipality="Sarria",
-        province="Lugo",
-    )
-
-
-@pytest.fixture
-def animal(farm):
-    """Animal base sobre el que colgar registros de producción."""
-    return Animal.objects.create(
-        farm=farm,
-        ear_tag="ES0001",
-        birth_date=datetime.date(2021, 3, 1),
-    )
-
-
 @pytest.mark.django_db
 def test_farm_str_incluye_nombre_y_codigo():
     """La etiqueta del admin identifica la granja sin ambigüedad."""
