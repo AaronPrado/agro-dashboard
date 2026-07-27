@@ -65,6 +65,14 @@ class Animal(models.Model):
     def __str__(self) -> str:
         return f"{self.ear_tag} ({self.get_breed_display()})"
 
+    @property
+    def is_active(self) -> bool:
+        """Indica si el animal sigue en la explotación.
+
+        No hay campo propio: la baja se representa por la presencia de `culled_date`.
+        """
+        return self.culled_date is None
+
 
 class Milking(models.Model):
     """Producción diaria registrada para un animal."""
