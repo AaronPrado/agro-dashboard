@@ -5,8 +5,8 @@ Framework** sobre **PostgreSQL** con datos realistas, y un frontend en **React**
 que los visualiza. Proyecto de portfolio orientado a mostrar un flujo completo de
 datos, desde su generación hasta su representación gráfica.
 
-> ⚠️ **Estado: en construcción.** El proyecto está arrancando; las instrucciones
-> de puesta en marcha se irán completando conforme avance la implementación.
+> ⚠️ **Estado: en construcción.** El backend es funcional —modelos, generador de
+> datos y API de lectura—; el frontend aún no está implementado.
 
 ## Dominio
 
@@ -50,11 +50,101 @@ reproducible mediante un comando de gestión, no con datos escritos a mano.
 
 ## Puesta en marcha
 
-Pendiente. El entorno se levantará con Docker Compose (Django + PostgreSQL) y la
-configuración sensible (`SECRET_KEY`, credenciales de la base de datos) se leerá
-de variables de entorno a partir de un `.env` local; se versiona un `.env.example`
-como plantilla. Las instrucciones concretas se añadirán al completar el esqueleto
-del backend.
+Requisitos: Docker y Docker Compose.
+
+1. **Configura el entorno.** La configuración sensible se lee de variables de
+   entorno; `.env` no se versiona y `.env.example` sirve de plantilla:
+
+   ```bash
+   cp backend/.env.example backend/.env
+   ```
+
+   Rellena `DJANGO_SECRET_KEY` y `POSTGRES_PASSWORD` con valores url-safe:
+
+   ```bash
+   python3 -c "import secrets; print(secrets.token_urlsafe(64))"
+   ```
+
+   > Los valores no pueden contener `$`: Docker Compose interpola el contenido de
+   > los ficheros `env_file` y lo trataría como una referencia a otra variable.
+
+2. **Levanta el stack.** Construye la imagen, arranca PostgreSQL y aplica las
+   migraciones:
+
+   ```bash
+   make build && make up
+   ```
+
+   La API queda en `http://localhost:8000` y el panel de administración en
+   `/admin/` (necesita un superusuario:
+   `docker compose run --rm web python manage.py createsuperuser`).
+
+3. **Puebla la base de datos** con datos mockeados reproducibles:
+
+   ```bash
+   make seed
+   ```
+
+   El comando acepta `--seed`, `--farms`, `--animals-per-farm`, `--start`, `--end`
+   y `--clear`. Con la misma semilla y los mismos parámetros produce siempre los
+   mismos datos; `--clear` lo hace idempotente.
+
+`make help` lista el resto de tareas: `make test`, `make lint`, `make format`,
+`make migrate`, `make shell`.
+
+## API
+
+Todos los endpoints son de **solo lectura**: los datos entran por la capa de
+ingesta, no por HTTP. La raíz `GET /api/` publica un índice navegable de los
+recursos, y en desarrollo cada endpoint se puede explorar desde el navegador con
+la interfaz navegable de DRF.
+
+| Endpoint | Filtros | Ordenación (`?ordering=`) |
+|---|---|---|
+| `/api/farms/` | `province` | `name`, `code`, `created_at` |
+| `/api/animals/` | `farm`, `breed`, `active` | `ear_tag`, `birth_date`, `lactation_number` |
+| `/api/milkings/` | `animal`, `farm`, `date_from`, `date_to` | `date`, `liters` |
+| `/api/milk-records/` | `animal`, `farm`, `date_from`, `date_to` | `date`, `somatic_cell_count`, `fat_pct`, `protein_pct` |
+| `/api/health/` | — | — |
+
+Notas sobre el contrato:
+
+- **Paginación** por número de página: la respuesta trae `count`, `next`,
+  `previous` y `results`. El tamaño por defecto es de 50 registros y el cliente
+  puede ajustarlo con `?page_size=`, hasta un máximo de 200.
+- **Rango de fechas** cerrado por ambos extremos y con cada extremo opcional:
+  `?date_from=2026-01-01&date_to=2026-01-31`.
+- **`active`** no corresponde a ningún campo almacenado: se deriva de la fecha de
+  baja del animal. `?active=true` devuelve los que siguen en la explotación.
+- **Los valores decimales viajan como cadena** (`"liters": "28.40"`). Es el
+  comportamiento por defecto de DRF y se conserva a propósito: preserva la
+  exactitud de los importes, que se almacenan como decimales y no como coma
+  flotante para que los agregados no dependan del orden de las filas.
+- **Un valor ausente se representa como `null`,** que significa "no medido" y es
+  distinto de cero. Los ordeños incluyen huecos y lecturas nulas a propósito.
+- **Un parámetro de consulta inválido devuelve `400`**, no un listado sin filtrar.
+
+Los ordeños y los controles lecheros exponen el crotal y la granja de su animal
+como campos planos, en lugar de anidar el objeto completo, para que un listado
+extenso no repita los mismos datos en cada fila.
+
+Ejemplo:
+
+```bash
+curl "http://localhost:8000/api/milkings/?farm=1&date_from=2026-01-01&date_to=2026-01-31&page_size=5"
+```
+
+## Desarrollo
+
+Los tests y el linter se ejecutan dentro del contenedor:
+
+```bash
+make lint && make test
+```
+
+Además hay un `pre-commit` que pasa `ruff` en el host antes de cada commit
+(engánchalo una vez con `cd backend && uv run pre-commit install`), y una CI de
+GitHub Actions que corre lint y tests en cada push y pull request.
 
 ## Licencia
 

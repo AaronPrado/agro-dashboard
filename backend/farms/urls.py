@@ -1,11 +1,19 @@
 """Rutas de la app farms."""
 
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
 
 from farms import views
 
 app_name = "farms"
 
+router = DefaultRouter()
+router.register("farms", views.FarmViewSet, basename="farm")
+router.register("animals", views.AnimalViewSet, basename="animal")
+router.register("milkings", views.MilkingViewSet, basename="milking")
+router.register("milk-records", views.MilkRecordViewSet, basename="milk-record")
+
 urlpatterns = [
     path("health/", views.health, name="health"),
+    path("", include(router.urls)),
 ]

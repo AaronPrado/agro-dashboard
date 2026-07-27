@@ -7,8 +7,19 @@ están disponibles en todos los tests del directorio sin necesidad de importarla
 import datetime
 
 import pytest
+from rest_framework.test import APIClient
 
 from farms.models import Animal, Farm
+
+
+@pytest.fixture
+def api_client():
+    """Cliente HTTP de DRF para ejercitar los endpoints de la API.
+
+    Se prefiere al cliente de Django porque negocia el contenido como lo hará
+    un consumidor real de la API y facilita enviar cuerpos en JSON.
+    """
+    return APIClient()
 
 
 @pytest.fixture
