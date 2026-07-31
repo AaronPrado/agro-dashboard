@@ -11,11 +11,11 @@ from decimal import Decimal
 
 import pytest
 
-from farms.models import Animal, Milking, MilkRecord
+from farms.models import Animal, DailyYield, MilkRecord
 from farms.serializers import (
     AnimalSerializer,
+    DailyYieldSerializer,
     FarmSerializer,
-    MilkingSerializer,
     MilkRecordSerializer,
 )
 
@@ -73,44 +73,44 @@ def test_animal_con_baja_no_esta_activo(farm):
 
 
 @pytest.mark.django_db
-def test_milking_serializa_los_litros_como_cadena(animal):
+def test_daily_yield_serializa_los_litros_como_cadena(animal):
     """DRF representa los `Decimal` como string para no perder exactitud."""
-    milking = Milking.objects.create(
+    daily_yield = DailyYield.objects.create(
         animal=animal,
         date=datetime.date(2026, 5, 10),
         liters=Decimal("28.40"),
     )
 
-    data = MilkingSerializer(milking).data
+    data = DailyYieldSerializer(daily_yield).data
 
     assert data["liters"] == "28.40"
     assert data["date"] == "2026-05-10"
 
 
 @pytest.mark.django_db
-def test_milking_conserva_el_nulo_de_una_lectura_ausente(animal):
-    """Un ordeño sin medir viaja como `null`, no como cero ni como cadena."""
-    milking = Milking.objects.create(
+def test_daily_yield_conserva_el_nulo_de_una_lectura_ausente(animal):
+    """Un día sin medir viaja como `null`, no como cero ni como cadena."""
+    daily_yield = DailyYield.objects.create(
         animal=animal,
         date=datetime.date(2026, 5, 11),
         liters=None,
     )
 
-    data = MilkingSerializer(milking).data
+    data = DailyYieldSerializer(daily_yield).data
 
     assert data["liters"] is None
 
 
 @pytest.mark.django_db
-def test_milking_expone_animal_y_granja_para_poder_agrupar(animal):
-    """El ordeño arrastra el crotal y el identificador de granja."""
-    milking = Milking.objects.create(
+def test_daily_yield_expone_animal_y_granja_para_poder_agrupar(animal):
+    """La producción diaria arrastra el crotal y el identificador de granja."""
+    daily_yield = DailyYield.objects.create(
         animal=animal,
         date=datetime.date(2026, 5, 12),
         liters=Decimal("30.00"),
     )
 
-    data = MilkingSerializer(milking).data
+    data = DailyYieldSerializer(daily_yield).data
 
     assert data["animal"] == animal.id
     assert data["animal_ear_tag"] == "ES0001"

@@ -51,7 +51,7 @@ SCC_LOGNORM_SIGMA = 0.70
 # Tasas de casos borde deliberados.  [modelado]
 GAP_RATE = 0.02  # probabilidad de iniciar un hueco de avería en un día productivo
 GAP_MAX_DAYS = 5  # duración máxima de un hueco
-NULL_RATE = 0.01  # ordeño registrado pero sin lectura válida (liters=None)
+NULL_RATE = 0.01  # día registrado pero sin lectura válida (liters=None)
 OUTLIER_RATE = 0.005  # lectura anómala puntual (fallo de sensor)
 OUTLIER_MULTIPLIERS = (0.2, 2.5)
 CULL_RATE = 0.10  # fracción de animales que causan baja dentro de la ventana
@@ -81,7 +81,7 @@ GALICIAN_PLACES = (
 
 
 @dataclass(slots=True)
-class MilkingData:
+class DailyYieldData:
     """Producción de un animal en un día concreto."""
 
     date: date
@@ -100,7 +100,7 @@ class MilkRecordData:
 
 @dataclass(slots=True)
 class AnimalData:
-    """Vaca con su serie de ordeños y sus controles."""
+    """Vaca con su serie de producción diaria y sus controles."""
 
     ear_tag: str
     birth_date: date
@@ -108,7 +108,7 @@ class AnimalData:
     lactation_number: int
     last_calving_date: date | None
     culled_date: date | None
-    milkings: list[MilkingData]
+    daily_yields: list[DailyYieldData]
     milk_records: list[MilkRecordData]
 
 
@@ -173,7 +173,7 @@ def _make_animal(rng: random.Random, params: GenerationParams, ear_tag: str) -> 
         lactation_number=lactation_number,
         last_calving_date=last_calving_date,
         culled_date=culled_date,
-        milkings=_daily_milkings(rng, breed, calvings, culled_date, params),
+        daily_yields=_daily_yields(rng, breed, calvings, culled_date, params),
         milk_records=_monthly_records(rng, breed, calvings, culled_date, params),
     )
 
@@ -224,15 +224,15 @@ def _maybe_cull(rng: random.Random, params: GenerationParams) -> date | None:
     return params.start + timedelta(days=rng.randint(span // 2, span))
 
 
-def _daily_milkings(
+def _daily_yields(
     rng: random.Random,
     breed: str,
     calvings: list[tuple[date, int]],
     culled_date: date | None,
     params: GenerationParams,
-) -> list[MilkingData]:
-    """Serie diaria de ordeños con curva de lactación, estacionalidad y casos borde."""
-    records: list[MilkingData] = []
+) -> list[DailyYieldData]:
+    """Serie diaria de producción con curva de lactación, estacionalidad y casos borde."""
+    records: list[DailyYieldData] = []
     yield_factor = BREED_YIELD_FACTOR[breed]
     day = params.start
     gap_days_left = 0
@@ -258,14 +258,14 @@ def _daily_milkings(
             day += ONE_DAY
             continue
         if rng.random() < NULL_RATE:
-            records.append(MilkingData(date=day, liters=None))  # registrado sin lectura
+            records.append(DailyYieldData(date=day, liters=None))  # registrado sin lectura
             day += ONE_DAY
             continue
         factor = yield_factor * parity_factor(parity) * seasonal_factor(day)
         kg = base_kg * factor * max(0.0, rng.gauss(1.0, DAILY_NOISE_SIGMA))
         if rng.random() < OUTLIER_RATE:
             kg *= rng.choice(OUTLIER_MULTIPLIERS)
-        records.append(MilkingData(date=day, liters=min(to_liters(kg), MAX_LITERS)))
+        records.append(DailyYieldData(date=day, liters=min(to_liters(kg), MAX_LITERS)))
         day += ONE_DAY
     return records
 

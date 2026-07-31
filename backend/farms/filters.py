@@ -2,7 +2,7 @@
 
 from django_filters import rest_framework as filters
 
-from farms.models import Animal, Farm, Milking, MilkRecord
+from farms.models import Animal, DailyYield, Farm, MilkRecord
 
 
 class AnimalFilter(filters.FilterSet):
@@ -23,8 +23,9 @@ class AnimalFilter(filters.FilterSet):
 class AnimalRecordFilter(filters.FilterSet):
     """Filtros comunes a los registros fechados que cuelgan de un animal.
 
-    Ordeños y controles lecheros comparten la misma forma —pertenecen a un
-    animal y llevan fecha—, así que comparten también su juego de filtros.
+    La producción diaria y los controles lecheros comparten la misma forma
+    —pertenecen a un animal y llevan fecha—, así que comparten también su juego
+    de filtros.
     """
 
     farm = filters.ModelChoiceFilter(
@@ -36,11 +37,11 @@ class AnimalRecordFilter(filters.FilterSet):
     date_to = filters.DateFilter(field_name="date", lookup_expr="lte", label="hasta")
 
 
-class MilkingFilter(AnimalRecordFilter):
+class DailyYieldFilter(AnimalRecordFilter):
     """Filtros de la producción diaria."""
 
     class Meta:
-        model = Milking
+        model = DailyYield
         fields = ["animal"]
 
 

@@ -12,7 +12,7 @@ from farms.models import Animal
 LISTADOS = [
     "admin:farms_farm_changelist",
     "admin:farms_animal_changelist",
-    "admin:farms_milking_changelist",
+    "admin:farms_dailyyield_changelist",
     "admin:farms_milkrecord_changelist",
 ]
 

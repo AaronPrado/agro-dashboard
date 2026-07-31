@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from django.db import transaction
 
-from farms.models import Animal, Farm, Milking, MilkRecord
+from farms.models import Animal, DailyYield, Farm, MilkRecord
 from farms.services.generation import FarmData
 
 BATCH_SIZE = 1000
@@ -21,7 +21,7 @@ class LoadSummary:
 
     farms: int = 0
     animals: int = 0
-    milkings: int = 0
+    daily_yields: int = 0
     milk_records: int = 0
 
 
@@ -59,15 +59,16 @@ def load_farms(farms: list[FarmData], *, clear: bool = False) -> LoadSummary:
             for animal_data in farm_data.animals
         ]
         # En PostgreSQL bulk_create rellena la PK de cada objeto, lo que permite
-        # colgar de ellos los ordeños y controles sin volver a consultarlos.
+        # colgar de ellos la producción y los controles sin volver a consultarlos.
         Animal.objects.bulk_create(animals, batch_size=BATCH_SIZE)
         summary.animals += len(animals)
 
-        milkings: list[Milking] = []
+        daily_yields: list[DailyYield] = []
         milk_records: list[MilkRecord] = []
         for animal, animal_data in zip(animals, farm_data.animals, strict=True):
-            milkings.extend(
-                Milking(animal=animal, date=m.date, liters=m.liters) for m in animal_data.milkings
+            daily_yields.extend(
+                DailyYield(animal=animal, date=y.date, liters=y.liters)
+                for y in animal_data.daily_yields
             )
             milk_records.extend(
                 MilkRecord(
@@ -80,9 +81,9 @@ def load_farms(farms: list[FarmData], *, clear: bool = False) -> LoadSummary:
                 for r in animal_data.milk_records
             )
 
-        Milking.objects.bulk_create(milkings, batch_size=BATCH_SIZE)
+        DailyYield.objects.bulk_create(daily_yields, batch_size=BATCH_SIZE)
         MilkRecord.objects.bulk_create(milk_records, batch_size=BATCH_SIZE)
-        summary.milkings += len(milkings)
+        summary.daily_yields += len(daily_yields)
         summary.milk_records += len(milk_records)
 
     return summary

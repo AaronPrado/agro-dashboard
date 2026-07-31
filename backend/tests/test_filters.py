@@ -11,7 +11,7 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 
-from farms.models import Animal, Farm, Milking
+from farms.models import Animal, DailyYield, Farm
 
 
 @pytest.fixture
@@ -95,11 +95,11 @@ def test_una_raza_inexistente_se_rechaza(api_client, rebano):
 
 
 @pytest.fixture
-def ordenos(rebano):
-    """Serie de ordeños repartida entre dos granjas y tres fechas."""
+def produccion(rebano):
+    """Serie de producción diaria repartida entre dos granjas y tres fechas."""
     activo, _de_baja, ajeno = rebano
     for dia, animal in ((1, activo), (15, activo), (28, ajeno)):
-        Milking.objects.create(
+        DailyYield.objects.create(
             animal=animal,
             date=datetime.date(2026, 4, dia),
             liters=Decimal("27.50"),
@@ -107,9 +107,9 @@ def ordenos(rebano):
 
 
 @pytest.mark.django_db
-def test_los_ordenos_se_filtran_por_granja_del_animal(api_client, ordenos, farm):
-    """El ordeño no tiene granja propia: se filtra cruzando la relación."""
-    response = api_client.get(reverse("farms:milking-list"), {"farm": farm.pk})
+def test_la_produccion_se_filtra_por_granja_del_animal(api_client, produccion, farm):
+    """La producción diaria no tiene granja propia: se filtra cruzando la relación."""
+    response = api_client.get(reverse("farms:daily-yield-list"), {"farm": farm.pk})
 
     assert response.status_code == 200
     fechas = {row["date"] for row in response.json()["results"]}
@@ -117,10 +117,10 @@ def test_los_ordenos_se_filtran_por_granja_del_animal(api_client, ordenos, farm)
 
 
 @pytest.mark.django_db
-def test_los_ordenos_se_filtran_por_rango_de_fechas(api_client, ordenos):
+def test_la_produccion_se_filtra_por_rango_de_fechas(api_client, produccion):
     """El rango es cerrado por ambos extremos."""
     response = api_client.get(
-        reverse("farms:milking-list"),
+        reverse("farms:daily-yield-list"),
         {"date_from": "2026-04-15", "date_to": "2026-04-28"},
     )
 
@@ -129,19 +129,19 @@ def test_los_ordenos_se_filtran_por_rango_de_fechas(api_client, ordenos):
 
 
 @pytest.mark.django_db
-def test_el_rango_admite_un_solo_extremo(api_client, ordenos):
+def test_el_rango_admite_un_solo_extremo(api_client, produccion):
     """`date_from` sin `date_to` deja la ventana abierta por la derecha."""
-    response = api_client.get(reverse("farms:milking-list"), {"date_from": "2026-04-15"})
+    response = api_client.get(reverse("farms:daily-yield-list"), {"date_from": "2026-04-15"})
 
     fechas = {row["date"] for row in response.json()["results"]}
     assert fechas == {"2026-04-15", "2026-04-28"}
 
 
 @pytest.mark.django_db
-def test_los_filtros_se_combinan(api_client, ordenos, farm):
+def test_los_filtros_se_combinan(api_client, produccion, farm):
     """Granja y fecha acotan a la vez, no se pisan."""
     response = api_client.get(
-        reverse("farms:milking-list"),
+        reverse("farms:daily-yield-list"),
         {"farm": farm.pk, "date_from": "2026-04-10"},
     )
 
@@ -150,17 +150,17 @@ def test_los_filtros_se_combinan(api_client, ordenos, farm):
 
 
 @pytest.mark.django_db
-def test_una_fecha_mal_formada_se_rechaza(api_client, ordenos):
+def test_una_fecha_mal_formada_se_rechaza(api_client, produccion):
     """Un parámetro inválido devuelve 400, no un listado sin filtrar."""
-    response = api_client.get(reverse("farms:milking-list"), {"date_from": "ayer"})
+    response = api_client.get(reverse("farms:daily-yield-list"), {"date_from": "ayer"})
 
     assert response.status_code == 400
 
 
 @pytest.mark.django_db
-def test_una_granja_inexistente_se_rechaza(api_client, ordenos):
+def test_una_granja_inexistente_se_rechaza(api_client, produccion):
     """Filtrar por una granja que no existe es un error del cliente."""
-    response = api_client.get(reverse("farms:milking-list"), {"farm": 999_999})
+    response = api_client.get(reverse("farms:daily-yield-list"), {"farm": 999_999})
 
     assert response.status_code == 400
 

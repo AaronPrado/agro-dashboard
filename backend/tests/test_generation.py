@@ -56,14 +56,14 @@ def test_distribucion_de_razas_sesgada_a_frisona(poblacion):
 
 
 def test_litros_dentro_de_los_limites_del_modelo(poblacion):
-    """Ningún ordeño viola el DecimalField(max_digits=5, decimal_places=2)."""
+    """Ningún registro viola el DecimalField(max_digits=5, decimal_places=2)."""
     farms, _ = poblacion
     for farm in farms:
         for animal in farm.animals:
-            for milking in animal.milkings:
-                if milking.liters is not None:
-                    assert Decimal("0") <= milking.liters <= Decimal("999.99")
-                    assert milking.liters.as_tuple().exponent == -2
+            for daily_yield in animal.daily_yields:
+                if daily_yield.liters is not None:
+                    assert Decimal("0") <= daily_yield.liters <= Decimal("999.99")
+                    assert daily_yield.liters.as_tuple().exponent == -2
 
 
 def test_analitica_dentro_de_los_limites_del_modelo(poblacion):
@@ -80,23 +80,23 @@ def test_analitica_dentro_de_los_limites_del_modelo(poblacion):
                     assert record.somatic_cell_count > 0
 
 
-def test_ordenos_dentro_de_la_ventana_y_antes_de_la_baja(poblacion):
-    """No hay ordeños fuera del rango pedido ni después de la baja del animal."""
+def test_produccion_dentro_de_la_ventana_y_antes_de_la_baja(poblacion):
+    """No hay registros fuera del rango pedido ni después de la baja del animal."""
     farms, params = poblacion
     for farm in farms:
         for animal in farm.animals:
-            for milking in animal.milkings:
-                assert params.start <= milking.date <= params.end
+            for daily_yield in animal.daily_yields:
+                assert params.start <= daily_yield.date <= params.end
                 if animal.culled_date is not None:
-                    assert milking.date <= animal.culled_date
+                    assert daily_yield.date <= animal.culled_date
 
 
 def test_incluye_casos_borde(poblacion):
     """La población contiene nulos (lecturas ausentes) y bajas a mitad de serie."""
     farms, _ = poblacion
-    milkings = [m for farm in farms for animal in farm.animals for m in animal.milkings]
+    daily_yields = [m for farm in farms for animal in farm.animals for m in animal.daily_yields]
 
-    assert any(m.liters is None for m in milkings)
+    assert any(m.liters is None for m in daily_yields)
     assert any(a.culled_date is not None for farm in farms for a in farm.animals)
 
 
@@ -109,14 +109,14 @@ def test_produccion_sigue_la_curva_de_lactacion(poblacion):
         for animal in farm.animals:
             if animal.last_calving_date is None:
                 continue
-            for milking in animal.milkings:
-                if milking.liters is None:
+            for daily_yield in animal.daily_yields:
+                if daily_yield.liters is None:
                     continue
-                dim = (milking.date - animal.last_calving_date).days
+                dim = (daily_yield.date - animal.last_calving_date).days
                 if 30 <= dim <= 120:
-                    inicio.append(milking.liters)
+                    inicio.append(daily_yield.liters)
                 elif 250 <= dim <= 305:
-                    final.append(milking.liters)
+                    final.append(daily_yield.liters)
 
     assert inicio and final
     assert sum(inicio) / len(inicio) > sum(final) / len(final)
