@@ -5,12 +5,12 @@ from django.db.utils import OperationalError
 from django.http import HttpRequest, JsonResponse
 from rest_framework import viewsets
 
-from farms.filters import AnimalFilter, MilkingFilter, MilkRecordFilter
-from farms.models import Animal, Farm, Milking, MilkRecord
+from farms.filters import AnimalFilter, DailyYieldFilter, MilkRecordFilter
+from farms.models import Animal, DailyYield, Farm, MilkRecord
 from farms.serializers import (
     AnimalSerializer,
+    DailyYieldSerializer,
     FarmSerializer,
-    MilkingSerializer,
     MilkRecordSerializer,
 )
 
@@ -49,13 +49,13 @@ class AnimalViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_class = AnimalFilter
 
 
-class MilkingViewSet(viewsets.ReadOnlyModelViewSet):
+class DailyYieldViewSet(viewsets.ReadOnlyModelViewSet):
     """Consulta de la producción diaria."""
 
-    queryset = Milking.objects.select_related("animal")
-    serializer_class = MilkingSerializer
+    queryset = DailyYield.objects.select_related("animal")
+    serializer_class = DailyYieldSerializer
     ordering_fields = ["date", "liters"]
-    filterset_class = MilkingFilter
+    filterset_class = DailyYieldFilter
 
 
 class MilkRecordViewSet(viewsets.ReadOnlyModelViewSet):

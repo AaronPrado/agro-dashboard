@@ -11,7 +11,7 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 
-from farms.models import Animal, Milking
+from farms.models import Animal, DailyYield
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def test_la_raiz_de_la_api_lista_los_recursos(api_client):
     response = api_client.get(reverse("farms:api-root"))
 
     assert response.status_code == 200
-    assert set(response.json()) == {"farms", "animals", "milkings", "milk-records"}
+    assert set(response.json()) == {"farms", "animals", "daily-yields", "milk-records"}
 
 
 @pytest.mark.django_db
@@ -122,16 +122,16 @@ def test_el_parametro_ordering_invierte_el_orden(api_client, animals):
 
 
 @pytest.mark.django_db
-def test_una_pagina_de_ordenos_no_dispara_consultas_por_fila(
+def test_una_pagina_de_produccion_no_dispara_consultas_por_fila(
     api_client, animals, django_assert_num_queries
 ):
     """El `select_related` de la vista evita el problema N+1.
 
-    Sin él, cada ordeño de la página consultaría su animal por separado y el
+    Sin él, cada fila de la página consultaría su animal por separado y el
     número de consultas crecería con el tamaño de página.
     """
     for index, animal in enumerate(animals):
-        Milking.objects.create(
+        DailyYield.objects.create(
             animal=animal,
             date=datetime.date(2026, 5, 10 + index),
             liters=Decimal("28.40"),
@@ -139,7 +139,7 @@ def test_una_pagina_de_ordenos_no_dispara_consultas_por_fila(
 
     # Dos consultas fijas: el recuento de la paginación y la página en sí.
     with django_assert_num_queries(2):
-        response = api_client.get(reverse("farms:milking-list"))
+        response = api_client.get(reverse("farms:daily-yield-list"))
         assert len(response.json()["results"]) == len(animals)
 
 

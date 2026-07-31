@@ -84,7 +84,8 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"Sembrado: {summary.farms} granjas, {summary.animals} animales, "
-                f"{summary.milkings} ordeños, {summary.milk_records} controles "
+                f"{summary.daily_yields} producciones diarias, "
+                f"{summary.milk_records} controles "
                 f"(semilla {seed})."
             )
         )

@@ -14,8 +14,8 @@ El modelo de datos gira en torno a la explotación lechera:
 
 - **Granja** — la explotación.
 - **Animal** — cada vaca, identificada por su crotal, perteneciente a una granja.
-- **Ordeño** — producción diaria de cada animal (litros).
-- **Control lechero** — analítica mensual de cada animal: grasa y proteína (en
+- **Producción diaria** — lo que produce cada animal en un día (litros).
+- **Control lechero individual** — analítica mensual de cada animal: grasa y proteína (en
   porcentaje) y recuento de células somáticas (en células/ml, la unidad en la que
   el Reglamento (CE) 853/2004 fija el límite de 400.000 para la leche cruda de
   vaca; ese umbral es la base de las alertas de calidad).
@@ -103,7 +103,7 @@ la interfaz navegable de DRF.
 |---|---|---|
 | `/api/farms/` | `province` | `name`, `code`, `created_at` |
 | `/api/animals/` | `farm`, `breed`, `active` | `ear_tag`, `birth_date`, `lactation_number` |
-| `/api/milkings/` | `animal`, `farm`, `date_from`, `date_to` | `date`, `liters` |
+| `/api/daily-yields/` | `animal`, `farm`, `date_from`, `date_to` | `date`, `liters` |
 | `/api/milk-records/` | `animal`, `farm`, `date_from`, `date_to` | `date`, `somatic_cell_count`, `fat_pct`, `protein_pct` |
 | `/api/health/` | — | — |
 
@@ -121,17 +121,17 @@ Notas sobre el contrato:
   exactitud de los importes, que se almacenan como decimales y no como coma
   flotante para que los agregados no dependan del orden de las filas.
 - **Un valor ausente se representa como `null`,** que significa "no medido" y es
-  distinto de cero. Los ordeños incluyen huecos y lecturas nulas a propósito.
+  distinto de cero. La producción diaria incluye huecos y lecturas nulas a propósito.
 - **Un parámetro de consulta inválido devuelve `400`**, no un listado sin filtrar.
 
-Los ordeños y los controles lecheros exponen el crotal y la granja de su animal
-como campos planos, en lugar de anidar el objeto completo, para que un listado
-extenso no repita los mismos datos en cada fila.
+La producción diaria y los controles lecheros exponen el crotal y la granja de su
+animal como campos planos, en lugar de anidar el objeto completo, para que un
+listado extenso no repita los mismos datos en cada fila.
 
 Ejemplo:
 
 ```bash
-curl "http://localhost:8000/api/milkings/?farm=1&date_from=2026-01-01&date_to=2026-01-31&page_size=5"
+curl "http://localhost:8000/api/daily-yields/?farm=1&date_from=2026-01-01&date_to=2026-01-31&page_size=5"
 ```
 
 ## Desarrollo

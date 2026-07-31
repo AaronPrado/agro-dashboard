@@ -10,7 +10,7 @@ app_name = "farms"
 router = DefaultRouter()
 router.register("farms", views.FarmViewSet, basename="farm")
 router.register("animals", views.AnimalViewSet, basename="animal")
-router.register("milkings", views.MilkingViewSet, basename="milking")
+router.register("daily-yields", views.DailyYieldViewSet, basename="daily-yield")
 router.register("milk-records", views.MilkRecordViewSet, basename="milk-record")
 
 urlpatterns = [

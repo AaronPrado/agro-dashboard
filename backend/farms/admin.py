@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from farms.models import Animal, Farm, Milking, MilkRecord
+from farms.models import Animal, DailyYield, Farm, MilkRecord
 
 
 @admin.register(Farm)
@@ -23,8 +23,8 @@ class AnimalAdmin(admin.ModelAdmin):
     date_hierarchy = "birth_date"
 
 
-@admin.register(Milking)
-class MilkingAdmin(admin.ModelAdmin):
+@admin.register(DailyYield)
+class DailyYieldAdmin(admin.ModelAdmin):
     list_display = ["animal", "date", "liters"]
     list_filter = ["animal__farm"]
     search_fields = ["animal__ear_tag"]

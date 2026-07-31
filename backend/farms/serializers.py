@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from farms.models import Animal, Farm, Milking, MilkRecord
+from farms.models import Animal, DailyYield, Farm, MilkRecord
 
 
 class FarmSerializer(serializers.ModelSerializer):
@@ -37,7 +37,7 @@ class AnimalSerializer(serializers.ModelSerializer):
         ]
 
 
-class MilkingSerializer(serializers.ModelSerializer):
+class DailyYieldSerializer(serializers.ModelSerializer):
     """Producción diaria de un animal.
 
     Expone `farm` como identificador para que el consumidor pueda agrupar por
@@ -49,7 +49,7 @@ class MilkingSerializer(serializers.ModelSerializer):
     farm = serializers.IntegerField(source="animal.farm_id", read_only=True)
 
     class Meta:
-        model = Milking
+        model = DailyYield
         fields = ["id", "animal", "animal_ear_tag", "farm", "date", "liters"]
 
 

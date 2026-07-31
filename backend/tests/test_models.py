@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 from django.db import DataError, IntegrityError
 
-from farms.models import Animal, Farm, Milking, MilkRecord
+from farms.models import Animal, DailyYield, Farm, MilkRecord
 
 
 @pytest.mark.django_db
@@ -156,70 +156,82 @@ def test_animal_borrado_en_cascada_al_borrar_la_granja(farm):
 
 
 @pytest.mark.django_db
-def test_milking_str_resume_animal_fecha_y_litros(animal):
-    """Etiqueta legible para el admin, donde los ordeños se listan en masa."""
-    milking = Milking.objects.create(
+def test_daily_yield_str_resume_animal_fecha_y_litros(animal):
+    """Etiqueta legible para el admin, donde la producción se lista en masa."""
+    daily_yield = DailyYield.objects.create(
         animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40")
     )
 
-    assert str(milking) == "ES0001 · 2024-05-10 · 28.40 L"
+    assert str(daily_yield) == "ES0001 · 2024-05-10 · 28.40 L"
 
 
 @pytest.mark.django_db
-def test_milking_un_registro_por_animal_y_dia(animal):
+def test_daily_yield_un_registro_por_animal_y_dia(animal):
     """Decisión F1: la granularidad es diaria, y la BD la impone."""
-    Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40"))
+    DailyYield.objects.create(
+        animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40")
+    )
 
     with pytest.raises(IntegrityError):
-        Milking.objects.create(
+        DailyYield.objects.create(
             animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("12.00")
         )
 
 
 @pytest.mark.django_db
-def test_milking_rechaza_litros_negativos(animal):
+def test_daily_yield_rechaza_litros_negativos(animal):
     """Una producción negativa es corrupción, no un dato atípico."""
     with pytest.raises(IntegrityError):
-        Milking.objects.create(
+        DailyYield.objects.create(
             animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("-1.00")
         )
 
 
 @pytest.mark.django_db
-def test_milking_admite_litros_nulos_para_medicion_fallida(animal):
+def test_daily_yield_admite_litros_nulos_para_medicion_fallida(animal):
     """NULL distingue "no se midió" de "produjo cero", que no es lo mismo."""
-    milking = Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 10), liters=None)
+    daily_yield = DailyYield.objects.create(
+        animal=animal, date=datetime.date(2024, 5, 10), liters=None
+    )
 
-    assert milking.liters is None
+    assert daily_yield.liters is None
 
 
 @pytest.mark.django_db
-def test_milking_los_litros_llegan_como_decimal_exacto(animal):
+def test_daily_yield_los_litros_llegan_como_decimal_exacto(animal):
     """DecimalField, no FloatField: la agregación posterior debe ser exacta."""
-    Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40"))
+    DailyYield.objects.create(
+        animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40")
+    )
 
-    assert Milking.objects.get().liters == Decimal("28.40")
+    assert DailyYield.objects.get().liters == Decimal("28.40")
 
 
 @pytest.mark.django_db
-def test_milking_ordenacion_por_defecto_mas_reciente_primero(animal):
+def test_daily_yield_ordenacion_por_defecto_mas_reciente_primero(animal):
     """El dashboard mira los últimos días; el desempate mantiene estable la paginación."""
-    Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 9), liters=Decimal("20.00"))
-    Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 11), liters=Decimal("22.00"))
+    DailyYield.objects.create(
+        animal=animal, date=datetime.date(2024, 5, 9), liters=Decimal("20.00")
+    )
+    DailyYield.objects.create(
+        animal=animal, date=datetime.date(2024, 5, 11), liters=Decimal("22.00")
+    )
 
-    fechas = [milking.date for milking in Milking.objects.all()]
+    fechas = [daily_yield.date for daily_yield in DailyYield.objects.all()]
 
     assert fechas == [datetime.date(2024, 5, 11), datetime.date(2024, 5, 9)]
 
 
 @pytest.mark.django_db
-def test_milking_borrado_en_cascada_al_borrar_la_granja(farm, animal):
-    """El borrado en cascada alcanza dos niveles: granja → animal → ordeños."""
-    Milking.objects.create(animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40"))
+def test_daily_yield_borrado_en_cascada_al_borrar_la_granja(farm, animal):
+    """El borrado en cascada alcanza dos niveles: granja → animal → producción diaria."""
+    DailyYield.objects.create(
+        animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40")
+    )
 
     farm.delete()
 
-    assert Milking.objects.count() == 0
+    assert DailyYield.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -293,7 +305,7 @@ def test_milk_record_limite_legal_de_celulas_somaticas():
 
 @pytest.mark.django_db
 def test_milk_records_accesibles_desde_el_animal(animal):
-    """related_name="milk_records" separa los controles de los ordeños."""
+    """related_name="milk_records" separa los controles de la producción diaria."""
     MilkRecord.objects.create(animal=animal, date=datetime.date(2024, 4, 1))
     MilkRecord.objects.create(animal=animal, date=datetime.date(2024, 5, 1))
 

@@ -74,34 +74,34 @@ class Animal(models.Model):
         return self.culled_date is None
 
 
-class Milking(models.Model):
+class DailyYield(models.Model):
     """Producción diaria registrada para un animal."""
 
     animal = models.ForeignKey(
         Animal,
         verbose_name="animal",
         on_delete=models.CASCADE,
-        related_name="milkings",
+        related_name="daily_yields",
     )
     date = models.DateField("fecha")
     liters = models.DecimalField("litros", max_digits=5, decimal_places=2, null=True, blank=True)
 
     class Meta:
-        verbose_name = "ordeño"
-        verbose_name_plural = "ordeños"
+        verbose_name = "producción diaria"
+        verbose_name_plural = "producciones diarias"
         ordering = ["-date", "animal"]
         constraints = [
             models.UniqueConstraint(
                 fields=["animal", "date"],
-                name="farms_milking_unique_animal_date",
+                name="farms_dailyyield_unique_animal_date",
             ),
             models.CheckConstraint(
                 condition=models.Q(liters__isnull=True) | models.Q(liters__gte=0),
-                name="farms_milking_liters_not_negative",
+                name="farms_dailyyield_liters_not_negative",
             ),
         ]
         indexes = [
-            models.Index(fields=["date"], name="farms_milking_date_idx"),
+            models.Index(fields=["date"], name="farms_dailyyield_date_idx"),
         ]
 
     def __str__(self) -> str:
@@ -133,8 +133,8 @@ class MilkRecord(models.Model):
     )
 
     class Meta:
-        verbose_name = "control lechero"
-        verbose_name_plural = "controles lecheros"
+        verbose_name = "control lechero individual"
+        verbose_name_plural = "controles lecheros individuales"
         ordering = ["-date", "animal"]
         constraints = [
             models.UniqueConstraint(

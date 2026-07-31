@@ -105,7 +105,7 @@ def to_liters(kg: float) -> Decimal:
     """Convierte kg de leche a litros (÷densidad) cuantizando a 2 decimales.
 
     Cuantizar aquí respeta el `DecimalField(max_digits=5, decimal_places=2)` de
-    `Milking.liters` y evita sorpresas de redondeo al persistir.
+    `DailyYield.liters` y evita sorpresas de redondeo al persistir.
     """
     liters = Decimal(str(kg)) / MILK_DENSITY_KG_PER_L
     return liters.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
