@@ -23,6 +23,9 @@ LISTADOS = [
     "admin:farms_animalbatchmembership_changelist",
     "admin:farms_ration_changelist",
     "admin:farms_batchration_changelist",
+    "admin:farms_analyte_changelist",
+    "admin:farms_batchmilksample_changelist",
+    "admin:farms_targetprofile_changelist",
 ]
 
 

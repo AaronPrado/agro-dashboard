@@ -3,9 +3,12 @@
 from django.contrib import admin
 
 from farms.models import (
+    AnalysisResult,
+    Analyte,
     Animal,
     AnimalBatch,
     AnimalBatchMembership,
+    BatchMilkSample,
     BatchRation,
     Crop,
     DailyYield,
@@ -17,7 +20,40 @@ from farms.models import (
     RationIngredient,
     RawMaterial,
     Silage,
+    TargetProfile,
+    TargetRange,
 )
+
+
+class RationIngredientInline(admin.TabularInline):
+    model = RationIngredient
+    extra = 1
+    autocomplete_fields = ["silage", "raw_material"]
+
+
+class NIRResultInline(admin.TabularInline):
+    model = AnalysisResult
+    fields = ["analyte", "value"]
+    extra = 1
+    autocomplete_fields = ["analyte"]
+    verbose_name = "resultado"
+    verbose_name_plural = "resultados"
+
+
+class MilkResultInline(admin.TabularInline):
+    model = AnalysisResult
+    fields = ["analyte", "value"]
+    extra = 1
+    autocomplete_fields = ["analyte"]
+    verbose_name = "resultado"
+    verbose_name_plural = "resultados"
+
+
+class TargetRangeInline(admin.TabularInline):
+    model = TargetRange
+    fields = ["analyte", "min_value", "max_value"]
+    extra = 1
+    autocomplete_fields = ["analyte"]
 
 
 @admin.register(Farm)
@@ -93,6 +129,7 @@ class NIRAnalysisAdmin(admin.ModelAdmin):
     list_select_related = ["silage__crop"]
     autocomplete_fields = ["silage"]
     date_hierarchy = "date"
+    inlines = [NIRResultInline]
 
 
 @admin.register(RawMaterial)
@@ -100,12 +137,6 @@ class RawMaterialAdmin(admin.ModelAdmin):
     list_display = ["name", "category"]
     list_filter = ["category"]
     search_fields = ["name"]
-
-
-class RationIngredientInline(admin.TabularInline):
-    model = RationIngredient
-    extra = 1
-    autocomplete_fields = ["silage", "raw_material"]
 
 
 @admin.register(AnimalBatch)
@@ -146,3 +177,27 @@ class BatchRationAdmin(admin.ModelAdmin):
     list_select_related = ["batch", "ration"]
     autocomplete_fields = ["batch", "ration"]
     date_hierarchy = "date_from"
+
+
+@admin.register(Analyte)
+class AnalyteAdmin(admin.ModelAdmin):
+    list_display = ["name", "code", "unit"]
+    search_fields = ["name", "code"]
+
+
+@admin.register(BatchMilkSample)
+class BatchMilkSampleAdmin(admin.ModelAdmin):
+    list_display = ["batch", "date", "laboratory"]
+    list_filter = ["batch__farm"]
+    search_fields = ["batch__name", "laboratory"]
+    list_select_related = ["batch"]
+    autocomplete_fields = ["batch"]
+    date_hierarchy = "date"
+    inlines = [MilkResultInline]
+
+
+@admin.register(TargetProfile)
+class TargetProfileAdmin(admin.ModelAdmin):
+    list_display = ["name", "code"]
+    search_fields = ["name", "code"]
+    inlines = [TargetRangeInline]

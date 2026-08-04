@@ -10,7 +10,18 @@ from decimal import Decimal
 import pytest
 from rest_framework.test import APIClient
 
-from farms.models import Animal, AnimalBatch, Crop, Farm, Plot, Ration, Silage
+from farms.models import (
+    Analyte,
+    Animal,
+    AnimalBatch,
+    BatchMilkSample,
+    Crop,
+    Farm,
+    NIRAnalysis,
+    Plot,
+    Ration,
+    Silage,
+)
 
 
 @pytest.fixture
@@ -91,3 +102,21 @@ def ration(farm):
         name="Lactación alta",
         formulated_on=datetime.date(2026, 1, 15),
     )
+
+
+@pytest.fixture
+def analyte(db):
+    """Analito del catálogo, medible tanto en forraje como en leche."""
+    return Analyte.objects.create(code="dry-matter", name="Materia seca", unit="%")
+
+
+@pytest.fixture
+def nir_analysis(silage):
+    """Análisis NIR sobre el silo base, todavía sin resultados."""
+    return NIRAnalysis.objects.create(silage=silage, date=datetime.date(2025, 10, 5))
+
+
+@pytest.fixture
+def milk_sample(batch):
+    """Muestra compuesta de leche del lote base, todavía sin resultados."""
+    return BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 2, 10))
