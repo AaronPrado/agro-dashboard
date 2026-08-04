@@ -5,11 +5,23 @@ están disponibles en todos los tests del directorio sin necesidad de importarla
 """
 
 import datetime
+from decimal import Decimal
 
 import pytest
 from rest_framework.test import APIClient
 
-from farms.models import Animal, Farm
+from farms.models import (
+    Analyte,
+    Animal,
+    AnimalBatch,
+    BatchMilkSample,
+    Crop,
+    Farm,
+    NIRAnalysis,
+    Plot,
+    Ration,
+    Silage,
+)
 
 
 @pytest.fixture
@@ -41,3 +53,70 @@ def animal(farm):
         ear_tag="ES0001",
         birth_date=datetime.date(2021, 3, 1),
     )
+
+
+@pytest.fixture
+def plot(farm):
+    """Parcela base sobre la que colgar cultivos."""
+    return Plot.objects.create(
+        farm=farm,
+        name="Leira do Souto",
+        code="P-001",
+        area_ha=Decimal("2.5000"),
+    )
+
+
+@pytest.fixture
+def crop(plot):
+    """Campaña de maíz sobre la parcela base."""
+    return Crop.objects.create(
+        plot=plot,
+        species=Crop.Species.MAIZE,
+        season=2025,
+        sowing_date=datetime.date(2025, 5, 1),
+        harvest_date=datetime.date(2025, 9, 20),
+    )
+
+
+@pytest.fixture
+def silage(crop):
+    """Silo procedente de la campaña base."""
+    return Silage.objects.create(
+        crop=crop,
+        code="S-2025-01",
+        sealed_date=datetime.date(2025, 9, 22),
+    )
+
+
+@pytest.fixture
+def batch(farm):
+    """Lote de animales de la granja base."""
+    return AnimalBatch.objects.create(farm=farm, name="Alta producción")
+
+
+@pytest.fixture
+def ration(farm):
+    """Ración formulada para la granja base."""
+    return Ration.objects.create(
+        farm=farm,
+        name="Lactación alta",
+        formulated_on=datetime.date(2026, 1, 15),
+    )
+
+
+@pytest.fixture
+def analyte(db):
+    """Analito del catálogo, medible tanto en forraje como en leche."""
+    return Analyte.objects.create(code="dry-matter", name="Materia seca", unit="%")
+
+
+@pytest.fixture
+def nir_analysis(silage):
+    """Análisis NIR sobre el silo base, todavía sin resultados."""
+    return NIRAnalysis.objects.create(silage=silage, date=datetime.date(2025, 10, 5))
+
+
+@pytest.fixture
+def milk_sample(batch):
+    """Muestra compuesta de leche del lote base, todavía sin resultados."""
+    return BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 2, 10))

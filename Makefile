@@ -3,7 +3,7 @@ COMPOSE := docker compose
 SERVICE := web
 
 .DEFAULT_GOAL := help
-.PHONY: help build up up-d down logs migrate makemigrations shell lint format test seed
+.PHONY: help build up up-d down logs migrate makemigrations shell lint format test seed lint-fix
 
 help:  ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -39,6 +39,10 @@ lint:  ## Lint con ruff (no necesita base de datos)
 
 format:  ## Formatea el código con ruff
 	$(COMPOSE) run --rm --no-deps $(SERVICE) ruff format .
+
+lint-fix:  ## Corrige lo que ruff puede arreglar solo (incluye el orden de imports)
+	$(COMPOSE) run --rm --no-deps $(SERVICE) ruff check --fix .
+	$(MAKE) format
 
 test:  ## Ejecuta la batería de tests con pytest
 	$(COMPOSE) run --rm $(SERVICE) pytest
