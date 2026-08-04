@@ -5,12 +5,18 @@ que la división en módulos no altera el resto del proyecto. Un modelo solo que
 registrado en la app si su módulo se importa aquí.
 """
 
+from farms.models.agronomy import Crop, NIRAnalysis, Plot, RawMaterial, Silage
 from farms.models.dairy import Animal, DailyYield, MilkRecord
 from farms.models.farm import Farm
 
 __all__ = [
     "Animal",
+    "Crop",
     "DailyYield",
     "Farm",
     "MilkRecord",
+    "NIRAnalysis",
+    "Plot",
+    "RawMaterial",
+    "Silage",
 ]

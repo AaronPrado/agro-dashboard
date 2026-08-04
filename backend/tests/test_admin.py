@@ -14,6 +14,11 @@ LISTADOS = [
     "admin:farms_animal_changelist",
     "admin:farms_dailyyield_changelist",
     "admin:farms_milkrecord_changelist",
+    "admin:farms_plot_changelist",
+    "admin:farms_crop_changelist",
+    "admin:farms_silage_changelist",
+    "admin:farms_niranalysis_changelist",
+    "admin:farms_rawmaterial_changelist",
 ]
 
 
@@ -32,7 +37,7 @@ def crear_animales(farm, cantidad, desde=0):
 @pytest.mark.parametrize("nombre_url", LISTADOS)
 @pytest.mark.django_db
 def test_listados_del_admin_responden(admin_client, nombre_url):
-    """Los cuatro modelos están registrados y su listado se renderiza."""
+    """Todos los modelos están registrados y su listado se renderiza."""
     response = admin_client.get(reverse(nombre_url))
 
     assert response.status_code == 200
@@ -42,6 +47,21 @@ def test_listados_del_admin_responden(admin_client, nombre_url):
 def test_formulario_de_alta_de_animal_responde(admin_client, farm):
     """El alta usa autocomplete_fields, que exige search_fields en FarmAdmin."""
     response = admin_client.get(reverse("admin:farms_animal_add"))
+
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_formulario_de_alta_de_analisis_nir_responde(admin_client, silage):
+    """Valida la cadena de autocompletado más profunda del admin.
+
+    `NIRAnalysis` autocompleta `Silage`, que autocompleta `Crop`, que autocompleta
+    `Plot`, que autocompleta `Farm`. Como `autocomplete_fields` exige
+    `search_fields` en el ModelAdmin apuntado, quitarlos de cualquier eslabón
+    intermedio rompe la comprobación de sistema y tumba el admin entero, no solo
+    este formulario.
+    """
+    response = admin_client.get(reverse("admin:farms_niranalysis_add"))
 
     assert response.status_code == 200
 

@@ -2,7 +2,17 @@
 
 from django.contrib import admin
 
-from farms.models import Animal, DailyYield, Farm, MilkRecord
+from farms.models import (
+    Animal,
+    Crop,
+    DailyYield,
+    Farm,
+    MilkRecord,
+    NIRAnalysis,
+    Plot,
+    RawMaterial,
+    Silage,
+)
 
 
 @admin.register(Farm)
@@ -41,3 +51,47 @@ class MilkRecordAdmin(admin.ModelAdmin):
     list_select_related = ["animal"]
     autocomplete_fields = ["animal"]
     date_hierarchy = "date"
+
+
+@admin.register(Plot)
+class PlotAdmin(admin.ModelAdmin):
+    list_display = ["name", "code", "farm", "area_ha"]
+    list_filter = ["farm"]
+    search_fields = ["name", "code"]
+    list_select_related = ["farm"]
+    autocomplete_fields = ["farm"]
+
+
+@admin.register(Crop)
+class CropAdmin(admin.ModelAdmin):
+    list_display = ["plot", "species", "season", "sowing_date", "harvest_date"]
+    list_filter = ["species", "season", "plot__farm"]
+    search_fields = ["plot__name", "plot__code"]
+    list_select_related = ["plot"]
+    autocomplete_fields = ["plot"]
+
+
+@admin.register(Silage)
+class SilageAdmin(admin.ModelAdmin):
+    list_display = ["code", "crop", "sealed_date", "opened_date"]
+    list_filter = ["crop__species", "crop__plot__farm"]
+    search_fields = ["code"]
+    list_select_related = ["crop__plot"]
+    autocomplete_fields = ["crop"]
+
+
+@admin.register(NIRAnalysis)
+class NIRAnalysisAdmin(admin.ModelAdmin):
+    list_display = ["silage", "date", "laboratory"]
+    list_filter = ["silage__crop__plot__farm"]
+    search_fields = ["silage__code", "laboratory"]
+    list_select_related = ["silage__crop"]
+    autocomplete_fields = ["silage"]
+    date_hierarchy = "date"
+
+
+@admin.register(RawMaterial)
+class RawMaterialAdmin(admin.ModelAdmin):
+    list_display = ["name", "category"]
+    list_filter = ["category"]
+    search_fields = ["name"]
