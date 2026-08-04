@@ -10,7 +10,7 @@ from decimal import Decimal
 import pytest
 from rest_framework.test import APIClient
 
-from farms.models import Animal, Crop, Farm, Plot, Silage
+from farms.models import Animal, AnimalBatch, Crop, Farm, Plot, Ration, Silage
 
 
 @pytest.fixture
@@ -74,4 +74,20 @@ def silage(crop):
         crop=crop,
         code="S-2025-01",
         sealed_date=datetime.date(2025, 9, 22),
+    )
+
+
+@pytest.fixture
+def batch(farm):
+    """Lote de animales de la granja base."""
+    return AnimalBatch.objects.create(farm=farm, name="Alta producción")
+
+
+@pytest.fixture
+def ration(farm):
+    """Ración formulada para la granja base."""
+    return Ration.objects.create(
+        farm=farm,
+        name="Lactación alta",
+        formulated_on=datetime.date(2026, 1, 15),
     )

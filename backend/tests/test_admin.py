@@ -7,7 +7,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from farms.models import Animal
+from farms.models import Animal, AnimalBatchMembership
 
 LISTADOS = [
     "admin:farms_farm_changelist",
@@ -19,6 +19,10 @@ LISTADOS = [
     "admin:farms_silage_changelist",
     "admin:farms_niranalysis_changelist",
     "admin:farms_rawmaterial_changelist",
+    "admin:farms_animalbatch_changelist",
+    "admin:farms_animalbatchmembership_changelist",
+    "admin:farms_ration_changelist",
+    "admin:farms_batchration_changelist",
 ]
 
 
@@ -64,6 +68,46 @@ def test_formulario_de_alta_de_analisis_nir_responde(admin_client, silage):
     response = admin_client.get(reverse("admin:farms_niranalysis_add"))
 
     assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_el_formulario_de_racion_trae_los_ingredientes_dentro(admin_client, ration, silage):
+    """La ración se edita entera: sus ingredientes viven como inline, no aparte.
+
+    `RationIngredient` no se registra por su cuenta a propósito —un aporte de
+    materia seca no significa nada sin su ración—, así que este formulario es el
+    único sitio donde se compone una receta.
+    """
+    response = admin_client.get(reverse("admin:farms_ration_change", args=[ration.pk]))
+
+    assert response.status_code == 200
+    assert b"ingredients-TOTAL_FORMS" in response.content
+
+
+@pytest.mark.django_db
+def test_el_admin_rechaza_una_pertenencia_solapada(admin_client, animal, batch):
+    """El admin sí ejecuta `clean()`: el solape sale como error de formulario.
+
+    Es la mitad de la garantía que la decisión A1 cubre —la entrada humana—, y la
+    que se ve en pantalla. La otra mitad, la carga masiva, queda documentada en
+    los tests del modelo.
+    """
+    AnimalBatchMembership.objects.create(
+        animal=animal, batch=batch, date_from=datetime.date(2026, 1, 1), date_to=None
+    )
+
+    response = admin_client.post(
+        reverse("admin:farms_animalbatchmembership_add"),
+        {
+            "animal": animal.pk,
+            "batch": batch.pk,
+            "date_from": "2026-03-01",
+            "date_to": "2026-03-31",
+        },
+    )
+
+    assert response.status_code == 200
+    assert AnimalBatchMembership.objects.count() == 1
 
 
 @pytest.mark.django_db

@@ -4,12 +4,17 @@ from django.contrib import admin
 
 from farms.models import (
     Animal,
+    AnimalBatch,
+    AnimalBatchMembership,
+    BatchRation,
     Crop,
     DailyYield,
     Farm,
     MilkRecord,
     NIRAnalysis,
     Plot,
+    Ration,
+    RationIngredient,
     RawMaterial,
     Silage,
 )
@@ -95,3 +100,49 @@ class RawMaterialAdmin(admin.ModelAdmin):
     list_display = ["name", "category"]
     list_filter = ["category"]
     search_fields = ["name"]
+
+
+class RationIngredientInline(admin.TabularInline):
+    model = RationIngredient
+    extra = 1
+    autocomplete_fields = ["silage", "raw_material"]
+
+
+@admin.register(AnimalBatch)
+class AnimalBatchAdmin(admin.ModelAdmin):
+    list_display = ["name", "farm"]
+    list_filter = ["farm"]
+    search_fields = ["name"]
+    list_select_related = ["farm"]
+    autocomplete_fields = ["farm"]
+
+
+@admin.register(AnimalBatchMembership)
+class AnimalBatchMembershipAdmin(admin.ModelAdmin):
+    list_display = ["animal", "batch", "date_from", "date_to"]
+    list_filter = ["batch__farm", "batch"]
+    search_fields = ["animal__ear_tag", "batch__name"]
+    list_select_related = ["animal", "batch"]
+    autocomplete_fields = ["animal", "batch"]
+    date_hierarchy = "date_from"
+
+
+@admin.register(Ration)
+class RationAdmin(admin.ModelAdmin):
+    list_display = ["name", "farm", "formulated_on"]
+    list_filter = ["farm"]
+    search_fields = ["name"]
+    list_select_related = ["farm"]
+    autocomplete_fields = ["farm"]
+    date_hierarchy = "formulated_on"
+    inlines = [RationIngredientInline]
+
+
+@admin.register(BatchRation)
+class BatchRationAdmin(admin.ModelAdmin):
+    list_display = ["batch", "ration", "date_from", "date_to"]
+    list_filter = ["batch__farm"]
+    search_fields = ["batch__name", "ration__name"]
+    list_select_related = ["batch", "ration"]
+    autocomplete_fields = ["batch", "ration"]
+    date_hierarchy = "date_from"
