@@ -23,6 +23,7 @@ from farms.services.agronomy import (
     ROTATION_SHARE,
     SILAGES_PER_RATION,
     crop_dates,
+    forage_analysis,
     plot_area_ha,
     ration_ingredients,
     silage_dates,
@@ -147,12 +148,25 @@ class AnimalData:
 
 
 @dataclass(slots=True)
+class ForageAnalysisData:
+    """Análisis NIR de un silo: la fecha de la muestra y su valor por analito.
+
+    Un valor nulo significa que ese parámetro no se determina en ese forraje, que
+    no es lo mismo que haberlo medido y no tener resultado.
+    """
+
+    date: date
+    results: dict[str, Decimal | None]
+
+
+@dataclass(slots=True)
 class SilageData:
-    """Silo conservado de una campaña, con sus fechas de cierre y apertura."""
+    """Silo conservado de una campaña, con sus fechas y su análisis."""
 
     code: str
     sealed_date: date
     opened_date: date
+    analysis: ForageAnalysisData
 
 
 @dataclass(slots=True)
@@ -301,12 +315,20 @@ def _make_crops(
 def _make_silage(
     rng: random.Random, plot_number: int, species: str, season: int, harvest_date: date
 ) -> SilageData:
-    """Silo de una campaña: se cierra tras cosechar y se abre tras fermentar."""
+    """Silo de una campaña: se cierra tras cosechar, se abre tras fermentar y se analiza.
+
+    El análisis se toma el día de la apertura, que es el supuesto por defecto
+    mientras no se sepa con qué periodicidad muestrea un silo la explotación.
+    """
     sealed_date, opened_date = silage_dates(rng, harvest_date)
     return SilageData(
         code=f"S-{season}-P{plot_number:02d}-{species[0].upper()}",
         sealed_date=sealed_date,
         opened_date=opened_date,
+        analysis=ForageAnalysisData(
+            date=opened_date,
+            results=forage_analysis(rng, species),
+        ),
     )
 
 

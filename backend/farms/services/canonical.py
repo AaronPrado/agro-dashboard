@@ -180,6 +180,44 @@ class BatchRationRecord:
     date_to: date | None
 
 
+@dataclass(frozen=True, slots=True)
+class AnalyteRecord:
+    """Parámetro analítico declarado por quien lo mide, con su unidad.
+
+    El catálogo no se codifica en la plataforma: lo trae el propio informe, que
+    es quien sabe qué mide y en qué unidad lo expresa.
+    """
+
+    code: str
+    name: str
+    unit: str
+
+
+@dataclass(frozen=True, slots=True)
+class ForageAnalysisRecord:
+    """Cabecera de un análisis de forraje: qué silo, cuándo y quién lo hizo."""
+
+    farm_code: str
+    silage_code: str
+    date: date
+    laboratory: str
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisResultRecord:
+    """Valor de un analito en un análisis de forraje.
+
+    No admite nulo: un parámetro no determinado no genera resultado, igual que en
+    el modelo, donde `value` tampoco es nulable.
+    """
+
+    farm_code: str
+    silage_code: str
+    date: date
+    analyte_code: str
+    value: Decimal
+
+
 @dataclass(slots=True)
 class CanonicalBatch:
     """Lo que entrega un adaptador tras normalizar una entrega de su fuente.
@@ -203,4 +241,7 @@ class CanonicalBatch:
     batches: list[AnimalBatchRecord] = field(default_factory=list)
     memberships: list[BatchMembershipRecord] = field(default_factory=list)
     batch_rations: list[BatchRationRecord] = field(default_factory=list)
+    analytes: list[AnalyteRecord] = field(default_factory=list)
+    forage_analyses: list[ForageAnalysisRecord] = field(default_factory=list)
+    analysis_results: list[AnalysisResultRecord] = field(default_factory=list)
     rejects: list[Reject] = field(default_factory=list)

@@ -206,3 +206,87 @@ def _split_by_share(total: Decimal, shares: dict[str, Decimal]) -> list[tuple[st
     keys = list(shares)
     parts = [(key, (total * shares[key]).quantize(Decimal("0.01"))) for key in keys[:-1]]
     return [*parts, (keys[-1], total - sum(kg for _, kg in parts))]
+
+
+# --- Análisis NIR del forraje ---
+
+# Los parámetros mínimos de un análisis de ensilado son materia seca, proteína
+# bruta, fibra ácido detergente, fibra neutro detergente y cenizas; el almidón se
+# añade en los ensilados de maíz. (Campo Galego, sobre qué debe traer una
+# analítica de forraje.)  [verificado]
+ANALYTES = (
+    ("ms", "Materia seca", "%"),
+    ("pb", "Proteína bruta", "% MS"),
+    ("fnd", "Fibra neutro detergente", "% MS"),
+    ("fad", "Fibra ácido detergente", "% MS"),
+    ("almidon", "Almidón", "% MS"),
+    ("cenizas", "Cenizas", "% MS"),
+)
+
+# Rangos de composición por forraje, tomados de las tablas FEDNA de forrajes
+# (fundacionfedna.org): «Ensilado de maíz», «Ray-grass, silo» y «Hierba, silo».
+# Los extremos de cada rango son los de las clases de calidad que publica FEDNA,
+# salvo tres excepciones que se declaran aquí:
+#
+#   - Maíz, materia seca: se usa 30-35 % porque es el momento óptimo de corte
+#     según la propia ficha de FEDNA, no el rango completo de sus clases.
+#   - Raigrás, materia seca: se usa 28-35 % en vez del rango completo (23-61 %),
+#     porque el extremo alto corresponde a forraje pasado y el bajo a ensilado
+#     sin preoreo, y la práctica descrita para Galicia es preorear hasta >=30 %
+#     (SERIDA).  [interpretación declarada]
+#   - Hierba, materia seca: derivada del rango de humedad publicado (71,7-84,0 %
+#     sobre materia natural), que es como lo da la tabla.
+#
+# `None` significa que ese parámetro no se determina en esa especie: el almidón
+# solo tiene sentido en el maíz. **Ningún valor que produce el generador cae
+# fuera del rango publicado para ese forraje**; la distribución uniforme dentro
+# del rango sí es una elección.  [modelado]
+FORAGE_RANGES: dict[str, dict[str, tuple[Decimal, Decimal] | None]] = {
+    "maize": {
+        "ms": (Decimal("30.0"), Decimal("35.0")),
+        "pb": (Decimal("6.95"), Decimal("8.78")),
+        "fnd": (Decimal("44.9"), Decimal("57.0")),
+        "fad": (Decimal("25.3"), Decimal("40.3")),
+        "almidon": (Decimal("10.3"), Decimal("34.2")),
+        "cenizas": (Decimal("4.01"), Decimal("7.28")),
+    },
+    "italian_ryegrass": {
+        "ms": (Decimal("28.0"), Decimal("35.0")),
+        "pb": (Decimal("10.7"), Decimal("18.6")),
+        "fnd": (Decimal("41.1"), Decimal("64.8")),
+        "fad": (Decimal("23.6"), Decimal("40.7")),
+        "almidon": None,
+        "cenizas": (Decimal("10.2"), Decimal("12.2")),
+    },
+    "grass_mix": {
+        "ms": (Decimal("16.0"), Decimal("28.3")),
+        "pb": (Decimal("9.50"), Decimal("18.6")),
+        "fnd": (Decimal("39.2"), Decimal("68.7")),
+        "fad": (Decimal("27.1"), Decimal("48.6")),
+        "almidon": None,
+        "cenizas": (Decimal("9.10"), Decimal("15.5")),
+    },
+}
+
+# Nombre genérico: no se atribuye la analítica a ningún laboratorio real.
+LABORATORY = "Laboratorio de análisis de forrajes"
+
+
+def forage_analysis(rng: random.Random, species: str) -> dict[str, Decimal | None]:
+    """Resultados de un análisis NIR de un ensilado de esa especie.
+
+    Devuelve el valor de cada analito del catálogo, o `None` cuando el parámetro
+    no se determina en ese forraje. Los códigos son los del modelo, no los del
+    laboratorio: traducirlos es trabajo del adaptador.
+    """
+    ranges = FORAGE_RANGES[species]
+    return {
+        code: None if ranges[code] is None else _uniform_decimal(rng, *ranges[code])
+        for code, _, _ in ANALYTES
+    }
+
+
+def _uniform_decimal(rng: random.Random, low: Decimal, high: Decimal) -> Decimal:
+    """Sortea un valor en [low, high] con dos decimales."""
+    span = int((high - low) * 100)
+    return (low + Decimal(rng.randint(0, span)) / 100).quantize(Decimal("0.01"))

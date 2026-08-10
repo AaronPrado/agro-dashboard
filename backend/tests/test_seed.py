@@ -14,6 +14,8 @@ from django.core.management import call_command
 from django.db.utils import IntegrityError
 
 from farms.models import (
+    AnalysisResult,
+    Analyte,
     Animal,
     AnimalBatchMembership,
     BatchRation,
@@ -28,7 +30,7 @@ from farms.models import (
     Silage,
     SourceSystem,
 )
-from farms.services.agronomy import FEEDING_GROUPS
+from farms.services.agronomy import FEEDING_GROUPS, FORAGE_RANGES
 
 START = datetime.date(2026, 1, 1)
 END = datetime.date(2026, 3, 31)
@@ -70,11 +72,7 @@ def test_el_dato_entra_por_mas_de_una_fuente():
     _seed()
 
     fuentes = set(IngestionRun.objects.values_list("source", flat=True))
-    assert fuentes == {
-        SourceSystem.MILKING_ROBOT,
-        SourceSystem.MILK_RECORDING,
-        SourceSystem.FIELD_NOTEBOOK,
-    }
+    assert fuentes == set(SourceSystem.values)
 
 
 @pytest.mark.django_db
@@ -139,6 +137,52 @@ def test_la_racion_suma_la_ingesta_declarada_del_grupo():
     for ration in Ration.objects.prefetch_related("ingredients"):
         total = sum(ingredient.dry_matter_kg for ingredient in ration.ingredients.all())
         assert total == ingestas[ration.name]
+
+
+@pytest.mark.django_db
+def test_cada_silo_llega_con_su_analitica():
+    """El último eslabón: del silo cuelga qué se midió en él."""
+    _seed()
+
+    assert Analyte.objects.exists()
+    for silage in Silage.objects.prefetch_related("nir_analyses__results"):
+        analisis = list(silage.nir_analyses.all())
+        assert len(analisis) == 1
+        assert analisis[0].date == silage.opened_date
+        assert analisis[0].results.exists()
+
+
+@pytest.mark.django_db
+def test_los_valores_del_nir_caen_dentro_del_rango_publicado():
+    """Ningún valor del generador se sale del rango de FEDNA para ese forraje.
+
+    Es la afirmación que sostiene el apartado del documento sobre qué es
+    sintético: los números están sorteados, pero no inventados.
+    """
+    _seed()
+
+    resultados = AnalysisResult.objects.select_related("analyte", "nir_analysis__silage__crop")
+    assert resultados.exists()
+    for resultado in resultados:
+        especie = resultado.nir_analysis.silage.crop.species
+        rango = FORAGE_RANGES[especie][resultado.analyte.code]
+        assert rango is not None, (especie, resultado.analyte.code)
+        assert rango[0] <= resultado.value <= rango[1]
+
+
+@pytest.mark.django_db
+def test_el_almidon_solo_se_mide_en_el_maiz():
+    """Un parámetro no determinado no deja fila, y el esquema lo impone."""
+    _seed()
+
+    especies = {
+        resultado.nir_analysis.silage.crop.species
+        for resultado in AnalysisResult.objects.filter(analyte__code="almidon").select_related(
+            "nir_analysis__silage__crop"
+        )
+    }
+
+    assert especies == {Crop.Species.MAIZE}
 
 
 @pytest.mark.django_db

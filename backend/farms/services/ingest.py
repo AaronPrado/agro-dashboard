@@ -16,6 +16,7 @@ from django.db import transaction
 
 from farms.models import (
     AnalysisResult,
+    Analyte,
     Animal,
     AnimalBatch,
     AnimalBatchMembership,
@@ -26,6 +27,7 @@ from farms.models import (
     IngestionReject,
     IngestionRun,
     MilkRecord,
+    NIRAnalysis,
     Plot,
     Ration,
     RationIngredient,
@@ -33,6 +35,8 @@ from farms.models import (
     Silage,
 )
 from farms.services.canonical import (
+    AnalysisResultRecord,
+    AnalyteRecord,
     AnimalBatchRecord,
     AnimalRegistration,
     BatchMembershipRecord,
@@ -40,6 +44,7 @@ from farms.services.canonical import (
     CanonicalBatch,
     CropRecord,
     FarmRegistration,
+    ForageAnalysisRecord,
     MilkQualityRecord,
     PlotRecord,
     ProductionReading,
@@ -80,6 +85,9 @@ class LoadSummary:
     batches: int = 0
     memberships: int = 0
     batch_rations: int = 0
+    analytes: int = 0
+    forage_analyses: int = 0
+    analysis_results: int = 0
 
     @property
     def loaded(self) -> int:
@@ -95,6 +103,9 @@ class LoadSummary:
             + self.batches
             + self.memberships
             + self.batch_rations
+            + self.analytes
+            + self.forage_analyses
+            + self.analysis_results
             + self.animals
             + self.daily_yields
             + self.milk_records
@@ -116,6 +127,9 @@ class LoadSummary:
         self.batches += other.batches
         self.memberships += other.memberships
         self.batch_rations += other.batch_rations
+        self.analytes += other.analytes
+        self.forage_analyses += other.forage_analyses
+        self.analysis_results += other.analysis_results
         return self
 
 
@@ -133,6 +147,7 @@ def clear() -> None:
     AnalysisResult.objects.all().delete()  # protege Analyte
     Farm.objects.all().delete()  # el CASCADE arrastra el resto del dominio
     RawMaterial.objects.all().delete()  # catálogo sembrado por el cuaderno
+    Analyte.objects.all().delete()  # catálogo sembrado por el laboratorio
     IngestionRun.objects.all().delete()  # protegida por toda fila con procedencia
 
 
@@ -158,6 +173,9 @@ def load(batch: CanonicalBatch, *, reference: str = "") -> tuple[IngestionRun, L
     _load_batches(batch.batches, run, summary)
     _load_memberships(batch.memberships, run, summary)
     _load_batch_rations(batch.batch_rations, run, summary)
+    _load_analytes(batch.analytes, summary)
+    _load_forage_analyses(batch.forage_analyses, run, summary)
+    _load_analysis_results(batch.analysis_results, run, summary)
     _load_production(batch.production, run, summary)
     _load_quality(batch.quality, run, summary)
     _load_rejects(batch.rejects, run, summary)
@@ -406,6 +424,62 @@ def _load_batch_rations(
         summary.batch_rations += 1
 
 
+def _load_analytes(records: Iterable[AnalyteRecord], summary: LoadSummary) -> None:
+    """Alta de analitos en el catálogo, tal como los declara quien los mide.
+
+    Como `RawMaterial`, es catálogo y no lleva procedencia: no es una observación
+    sino la definición de qué se observa.
+    """
+    for record in records:
+        Analyte.objects.update_or_create(
+            code=record.code,
+            defaults={"name": record.name, "unit": record.unit},
+        )
+        summary.analytes += 1
+
+
+def _load_forage_analyses(
+    records: Iterable[ForageAnalysisRecord], run: IngestionRun, summary: LoadSummary
+) -> None:
+    """Cabeceras de análisis NIR, colgadas del silo que se muestreó."""
+    records = list(records)
+    if not records:
+        return
+    silages = _silage_ids({(record.farm_code, record.silage_code) for record in records})
+    for record in records:
+        NIRAnalysis.objects.update_or_create(
+            silage_id=silages[(record.farm_code, record.silage_code)],
+            date=record.date,
+            defaults={"laboratory": record.laboratory, "ingestion_run": run},
+        )
+        summary.forage_analyses += 1
+
+
+def _load_analysis_results(
+    records: Iterable[AnalysisResultRecord], run: IngestionRun, summary: LoadSummary
+) -> None:
+    """Valores por analito, colgados de su análisis.
+
+    `AnalysisResult` cuelga de un análisis NIR o de una muestra de leche, nunca
+    de los dos: aquí siempre es lo primero, y la otra rama queda en `None`.
+    """
+    records = list(records)
+    if not records:
+        return
+    analyses = _nir_analysis_ids(
+        {(record.farm_code, record.silage_code, record.date) for record in records}
+    )
+    analytes = _analyte_ids({record.analyte_code for record in records})
+    for record in records:
+        AnalysisResult.objects.update_or_create(
+            nir_analysis_id=analyses[(record.farm_code, record.silage_code, record.date)],
+            milk_sample=None,
+            analyte_id=analytes[record.analyte_code],
+            defaults={"value": record.value, "ingestion_run": run},
+        )
+        summary.analysis_results += 1
+
+
 def _load_production(
     readings: Iterable[ProductionReading], run: IngestionRun, summary: LoadSummary
 ) -> None:
@@ -582,6 +656,28 @@ def _batch_ids(keys: set[tuple[str, str]]) -> dict[tuple[str, str], int]:
     missing = keys - found.keys()
     if missing:
         raise IngestionError(f"lotes no registrados: {sorted(missing)}")
+    return found
+
+
+def _nir_analysis_ids(keys: set[tuple[str, str, date]]) -> dict[tuple[str, str, date], int]:
+    """Resuelve (explotación, código de silo, fecha) a clave primaria del análisis."""
+    dates = {sampled_on for _, _, sampled_on in keys}
+    rows = NIRAnalysis.objects.filter(date__in=dates).values_list(
+        "silage__crop__plot__farm__code", "silage__code", "date", "id"
+    )
+    found = {(farm, silage, sampled_on): pk for farm, silage, sampled_on, pk in rows}
+    missing = keys - found.keys()
+    if missing:
+        raise IngestionError(f"análisis no registrados: {sorted(missing)}")
+    return found
+
+
+def _analyte_ids(codes: set[str]) -> dict[str, int]:
+    """Resuelve códigos de analito a clave primaria en una sola consulta."""
+    found = dict(Analyte.objects.filter(code__in=codes).values_list("code", "id"))
+    missing = codes - found.keys()
+    if missing:
+        raise IngestionError(f"analitos no registrados: {sorted(missing)}")
     return found
 
 

@@ -5,6 +5,7 @@ de sistemas reales; los adaptadores que las leen, no. Por eso los cuatro viven
 juntos aquí mientras que cada adaptador tiene su propio módulo.
 """
 
+import json
 import random
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
@@ -18,7 +19,8 @@ from farms.services.adapters.field_notebook import (
     SPECIES_CODES,
 )
 from farms.services.adapters.milk_recording import BREED_CODES, SCC_THOUSANDS
-from farms.services.agronomy import FEEDING_GROUPS, RAW_MATERIALS
+from farms.services.adapters.nir_lab import ANALYTE_CODES
+from farms.services.agronomy import ANALYTES, FEEDING_GROUPS, LABORATORY, RAW_MATERIALS
 from farms.services.generation import AnimalData, FarmData, MilkRecordData
 
 MILKING_ROBOT_HEADER = "crotal;fecha;hora;kg"
@@ -268,6 +270,44 @@ def _notebook_row(*values: str) -> str:
 def _comma_2dp(value: Decimal) -> str:
     """Número con dos decimales y coma, como lo escribe una hoja de cálculo."""
     return f"{value:.2f}".replace(".", ",")
+
+
+# La inversa del mapeo del adaptador y las unidades del catálogo, para que el
+# informe declare qué mide, que es lo que hace un laboratorio de verdad.
+ANALYTE_TO_CODE = {model_code: lab_code for lab_code, model_code in ANALYTE_CODES.items()}
+ANALYTE_LABELS = {code: (name, unit) for code, name, unit in ANALYTES}
+
+
+def nir_lab_feed(farm: FarmData) -> str:
+    """Informe del laboratorio de forrajes de una explotación, en JSON.
+
+    Es la única fuente cuya forma no es plana: los resultados cuelgan de la
+    muestra. Los parámetros no determinados viajan con `valor` nulo en vez de
+    omitirse, que es como distingue un informe «no lo medimos» de «no lo hay».
+    """
+    samples = [
+        {
+            "silo": silage.code,
+            "fecha": silage.analysis.date.isoformat(),
+            "resultados": [
+                {
+                    "parametro": ANALYTE_TO_CODE[code],
+                    "nombre": ANALYTE_LABELS[code][0],
+                    "unidad": ANALYTE_LABELS[code][1],
+                    "valor": None if value is None else float(value),
+                }
+                for code, value in silage.analysis.results.items()
+            ],
+        }
+        for plot in farm.plots
+        for crop in plot.crops
+        for silage in crop.silages
+    ]
+    return json.dumps(
+        {"laboratorio": LABORATORY, "explotacion": farm.code, "muestras": samples},
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 def _short_year(day: date | None) -> str:
