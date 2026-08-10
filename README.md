@@ -5,12 +5,17 @@ Framework** sobre **PostgreSQL** con datos realistas, y un frontend en **React**
 que los visualiza. Proyecto de portfolio orientado a mostrar un flujo completo de
 datos, desde su generación hasta su representación gráfica.
 
-> ⚠️ **Estado: en construcción.** El backend es funcional —modelos, generador de
-> datos y API de lectura—; el frontend aún no está implementado.
+> ⚠️ **Estado: en construcción.** El backend es funcional —modelo de datos,
+> generador, ingesta multifuente y API de lectura—; los endpoints agregados y el
+> frontend aún no están implementados.
 
 ## Dominio
 
-El modelo de datos gira en torno a la explotación lechera:
+El modelo cubre la línea continua que va del forraje a la leche, porque las
+decisiones de alimentación se toman en un extremo y sus efectos se miden en el
+otro.
+
+**La explotación y sus animales:**
 
 - **Granja** — la explotación.
 - **Animal** — cada vaca, identificada por su crotal, perteneciente a una granja.
@@ -19,6 +24,37 @@ El modelo de datos gira en torno a la explotación lechera:
   porcentaje) y recuento de células somáticas (en células/ml, la unidad en la que
   el Reglamento (CE) 853/2004 fija el límite de 400.000 para la leche cruda de
   vaca; ese umbral es la base de las alertas de calidad).
+
+**La cadena del forraje:**
+
+- **Parcela → Cultivo → Ensilado** — la base territorial, la campaña que se
+  siembra en ella y el silo que sale de esa cosecha.
+- **Análisis NIR** — lo que se mide de cada silo. Los parámetros no son columnas:
+  cuelgan como resultados por analito, de modo que el mismo esquema sirve para la
+  analítica del forraje y para la de la leche, y añadir un parámetro no cambia el
+  modelo.
+- **Ración** — la formulación, con sus ingredientes en kilos de materia seca.
+  Cada ingrediente es un silo propio o una materia prima comprada, nunca las dos
+  cosas: la base lo impone con una restricción.
+
+**La pieza que une las dos mitades:**
+
+- **Lote de animales** — el grupo al que se asigna una ración. La pertenencia de
+  un animal a su lote y la ración que come un lote son **relaciones fechadas**,
+  así que se puede responder qué comía un animal concreto en una fecha concreta.
+
+Las reglas que no deben violarse nunca —un crotal no repetido dentro de la misma
+granja, un único registro de producción por animal y día, litros y porcentajes no
+negativos— se declaran como restricciones en la propia base de datos, de modo que
+también las respete cualquier carga masiva de datos.
+
+Los datos son **mockeados pero realistas**: la producción sigue la curva de
+lactación (pico tras el parto y descenso hasta el secado), con variación por raza
+y número de partos, caída estival por estrés térmico y casos borde deliberados
+(huecos, valores atípicos, nulos y bajas a mitad de serie). La composición de los
+forrajes se sortea dentro de los rangos publicados en las tablas FEDNA para cada
+especie, así que ningún valor cae fuera de lo publicado. Todo se genera de forma
+reproducible mediante un comando de gestión, no con datos escritos a mano.
 
 Las reglas que no deben violarse nunca —un crotal no repetido dentro de la misma
 granja, un único registro de producción por animal y día, litros y porcentajes no
@@ -42,9 +78,17 @@ reproducible mediante un comando de gestión, no con datos escritos a mano.
 
 - **La agregación se hace en el backend.** Medias, totales, rankings y alertas se
   calculan en el ORM y viajan ya resueltos; el frontend solo representa.
-- **Los datos entran por la misma capa que usaría una fuente externa real,** de
-  modo que sustituir el generador de mocks por una ingesta real sea cambiar un
-  módulo, no reescribir el proyecto.
+- **Los datos entran por adaptadores de fuente,** uno por sistema de origen, y
+  salen todos con la misma forma canónica. Hoy son cuatro —robot de ordeño,
+  núcleo de control lechero, cuaderno de campo y laboratorio de análisis—, cada
+  uno con su formato, su manera de escribir una fecha, su codificación de lo no
+  medido y su vocabulario. El cargador recibe siempre la misma estructura y no
+  ramifica por origen: sustituir una fuente mockeada por una real es reescribir
+  su adaptador, no el proyecto.
+- **Cada fila sabe de dónde vino.** Toda carga queda registrada con su fuente, su
+  referencia de origen y sus contadores, y lo que un adaptador no supo interpretar
+  se conserva con el motivo y el contenido original en vez de descartarse en
+  silencio.
 - **El frontend consume siempre la API real,** con estados de carga y error
   explícitos; nunca datos embebidos en los componentes.
 
@@ -87,7 +131,13 @@ Requisitos: Docker y Docker Compose.
 
    El comando acepta `--seed`, `--farms`, `--animals-per-farm`, `--start`, `--end`
    y `--clear`. Con la misma semilla y los mismos parámetros produce siempre los
-   mismos datos; `--clear` lo hace idempotente.
+   mismos datos; `--clear` vacía la base antes de sembrar.
+
+   No escribe en la base directamente: genera los datos, serializa la entrega que
+   exportaría cada sistema de origen, se la pasa a su adaptador y carga el
+   resultado. Es el mismo recorrido que haría con ficheros reales, con el mock
+   ocupando solo el lugar del sistema de origen. El resumen final detalla qué
+   entró por cada fuente y cuántos registros se rechazaron.
 
 `make help` lista el resto de tareas: `make test`, `make lint`, `make format`,
 `make migrate`, `make shell`.
