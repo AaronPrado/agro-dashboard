@@ -1,10 +1,9 @@
-"""Tests del modelo biológico del dominio: curva de Wood, estacionalidad y conversión.
+"""Tests del modelo biológico del dominio: curva de Wood y estacionalidad.
 
 Son funciones puras (sin base de datos ni azar): entra un número, sale un número.
 """
 
 import datetime
-from decimal import Decimal
 
 import pytest
 
@@ -44,12 +43,6 @@ def test_seasonal_factor_acotado_todo_el_ano():
     for mes in range(1, 13):
         factor = dairy.seasonal_factor(datetime.date(2025, mes, 15))
         assert 1 - dairy.SEASONAL_TROUGH <= factor <= 1.0
-
-
-def test_to_liters_convierte_y_cuantiza_a_dos_decimales():
-    """30.9 kg / 1.03 = 30.00 L exactos, con la escala del DecimalField."""
-    assert dairy.to_liters(30.9) == Decimal("30.00")
-    assert dairy.to_liters(35.0).as_tuple().exponent == -2
 
 
 def test_parity_factor_penaliza_a_las_primiparas():

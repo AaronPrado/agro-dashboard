@@ -113,7 +113,7 @@ def test_daily_yield_expone_animal_y_granja_para_poder_agrupar(animal):
     data = DailyYieldSerializer(daily_yield).data
 
     assert data["animal"] == animal.id
-    assert data["animal_ear_tag"] == "ES0001"
+    assert data["animal_ear_tag"] == "ES221100010001"
     assert data["farm"] == animal.farm_id
 
 
@@ -134,7 +134,7 @@ def test_milk_record_serializa_la_analitica_completa(animal):
     assert data["protein_pct"] == "3.10"
     # El recuento es entero: no pasa por la representación decimal.
     assert data["somatic_cell_count"] == 145_000
-    assert data["animal_ear_tag"] == "ES0001"
+    assert data["animal_ear_tag"] == "ES221100010001"
     assert data["farm"] == animal.farm_id
 
 

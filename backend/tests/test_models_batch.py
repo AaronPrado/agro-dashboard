@@ -177,7 +177,7 @@ def test_str_de_pertenencia_marca_la_vigente(animal, batch):
     """La etiqueta del admin distingue de un vistazo la pertenencia en curso."""
     abierta = AnimalBatchMembership.objects.create(animal=animal, batch=batch, date_from=ENERO)
 
-    assert str(abierta) == "ES0001 · Alta producción · 2026-01-01 → vigente"
+    assert str(abierta) == "ES221100010001 · Alta producción · 2026-01-01 → vigente"
 
 
 @pytest.mark.django_db

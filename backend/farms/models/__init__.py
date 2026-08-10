@@ -22,6 +22,7 @@ from farms.models.batch import (
 )
 from farms.models.dairy import Animal, DailyYield, MilkRecord
 from farms.models.farm import Farm
+from farms.models.ingestion import IngestionReject, IngestionRun, Sourced, SourceSystem
 
 __all__ = [
     "AnalysisResult",
@@ -34,6 +35,8 @@ __all__ = [
     "Crop",
     "DailyYield",
     "Farm",
+    "IngestionReject",
+    "IngestionRun",
     "MilkRecord",
     "NIRAnalysis",
     "Plot",
@@ -41,6 +44,8 @@ __all__ = [
     "RationIngredient",
     "RawMaterial",
     "Silage",
+    "Sourced",
+    "SourceSystem",
     "TargetProfile",
     "TargetRange",
 ]

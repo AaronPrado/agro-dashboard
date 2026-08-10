@@ -3,9 +3,10 @@
 from django.db import models
 
 from farms.models.farm import Farm
+from farms.models.ingestion import Sourced
 
 
-class Animal(models.Model):
+class Animal(Sourced):
     """Vaca de una explotación, identificada por su crotal."""
 
     class Breed(models.TextChoices):
@@ -58,7 +59,7 @@ class Animal(models.Model):
         return self.culled_date is None
 
 
-class DailyYield(models.Model):
+class DailyYield(Sourced):
     """Producción diaria registrada para un animal."""
 
     animal = models.ForeignKey(
@@ -92,7 +93,7 @@ class DailyYield(models.Model):
         return f"{self.animal.ear_tag} · {self.date} · {self.liters} L"
 
 
-class MilkRecord(models.Model):
+class MilkRecord(Sourced):
     """Control lechero mensual: analítica de calidad de la leche de un animal."""
 
     # Límite legal de células somáticas en leche cruda de vaca en la UE,

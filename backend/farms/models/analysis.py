@@ -9,6 +9,7 @@ from django.db import models
 
 from farms.models.agronomy import NIRAnalysis
 from farms.models.batch import AnimalBatch
+from farms.models.ingestion import Sourced
 
 
 class Analyte(models.Model):
@@ -32,7 +33,7 @@ class Analyte(models.Model):
         return f"{self.name} ({self.unit})"
 
 
-class BatchMilkSample(models.Model):
+class BatchMilkSample(Sourced):
     """Muestra compuesta de leche de un lote.
 
     El lote es la unidad a la que se asigna la ración, así que muestrear por lote
@@ -67,7 +68,7 @@ class BatchMilkSample(models.Model):
         return f"{self.batch.name} · muestra {self.date}"
 
 
-class AnalysisResult(models.Model):
+class AnalysisResult(Sourced):
     """Valor de un analito en una muestra, sea de forraje o de leche.
 
     Cuelga de un análisis NIR o de una muestra de leche, nunca de los dos ni de

@@ -13,6 +13,8 @@ from farms.models import (
     Crop,
     DailyYield,
     Farm,
+    IngestionReject,
+    IngestionRun,
     MilkRecord,
     NIRAnalysis,
     Plot,
@@ -201,3 +203,19 @@ class TargetProfileAdmin(admin.ModelAdmin):
     list_display = ["name", "code"]
     search_fields = ["name", "code"]
     inlines = [TargetRangeInline]
+
+
+class IngestionRejectInline(admin.TabularInline):
+    model = IngestionReject
+    extra = 0
+    readonly_fields = ["line_number", "raw", "reason"]
+    can_delete = False
+
+
+@admin.register(IngestionRun)
+class IngestionRunAdmin(admin.ModelAdmin):
+    list_display = ["source", "ingested_at", "reference", "records_loaded", "records_rejected"]
+    list_filter = ["source"]
+    date_hierarchy = "ingested_at"
+    readonly_fields = ["ingested_at"]
+    inlines = [IngestionRejectInline]
