@@ -58,6 +58,15 @@ CULL_RATE = 0.10  # fracción de animales que causan baja dentro de la ventana
 MAX_KG = Decimal("999.99")  # tope defensivo; convertido a litros sigue cabiendo en el modelo
 MAX_PCT = Decimal("99.99")  # tope del DecimalField(max_digits=4, decimal_places=2)
 
+# Estructura del crotal bovino español: `ES` más doce dígitos. El código de país
+# de dos letras y el máximo de doce dígitos los fija el Reglamento (CE) 1760/2000;
+# el desglose de esos doce, el RD 787/2023: dos de especie (22, bovino), dos de
+# comunidad autónoma (11, Galicia) y ocho de identificación del animal. Los
+# nacidos antes del 30/06/2025 llevaban la estructura anterior, con un dígito de
+# control cuyo algoritmo no está publicado: se emite con la vigente antes que
+# inventar ese dígito, porque un dígito de control falso es comprobable.
+EAR_TAG_PREFIX = "ES2211"
+
 # Nombres de granjas mockeados
 FARM_NAMES = (
     "Casa Grande",
@@ -142,7 +151,7 @@ def _make_farm(rng: random.Random, index: int, params: GenerationParams) -> Farm
     name = rng.choice(FARM_NAMES)
     municipality, province = rng.choice(GALICIAN_PLACES)
     animals = [
-        _make_animal(rng, params, ear_tag=f"ES{index + 1:03d}{n + 1:04d}")
+        _make_animal(rng, params, ear_tag=f"{EAR_TAG_PREFIX}{index + 1:02d}{n + 1:06d}")
         for n in range(params.animals_per_farm)
     ]
     # El índice garantiza un código único aunque se repita el nombre.

@@ -162,7 +162,7 @@ def test_daily_yield_str_resume_animal_fecha_y_litros(animal):
         animal=animal, date=datetime.date(2024, 5, 10), liters=Decimal("28.40")
     )
 
-    assert str(daily_yield) == "ES0001 · 2024-05-10 · 28.40 L"
+    assert str(daily_yield) == "ES221100010001 · 2024-05-10 · 28.40 L"
 
 
 @pytest.mark.django_db
@@ -239,7 +239,7 @@ def test_milk_record_str_identifica_animal_y_fecha(animal):
     """El control se identifica por animal y fecha, que además son su clave única."""
     record = MilkRecord.objects.create(animal=animal, date=datetime.date(2024, 5, 1))
 
-    assert str(record) == "ES0001 · control 2024-05-01"
+    assert str(record) == "ES221100010001 · control 2024-05-01"
 
 
 @pytest.mark.django_db

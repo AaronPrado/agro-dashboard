@@ -61,7 +61,7 @@ def animal(farm):
     """Animal base sobre el que colgar registros de producción."""
     return Animal.objects.create(
         farm=farm,
-        ear_tag="ES0001",
+        ear_tag="ES221100010001",
         birth_date=datetime.date(2021, 3, 1),
     )
 

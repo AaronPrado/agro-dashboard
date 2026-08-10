@@ -9,6 +9,7 @@ y resolverlos a clave primaria es el trabajo de este módulo.
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Self
 
 from django.db import transaction
 
@@ -55,6 +56,15 @@ class LoadSummary:
     def loaded(self) -> int:
         """Filas efectivamente escritas, sin contar las rechazadas."""
         return self.farms + self.animals + self.daily_yields + self.milk_records
+
+    def __iadd__(self, other: Self) -> Self:
+        """Acumula el resultado de varias entregas en un solo resumen."""
+        self.farms += other.farms
+        self.animals += other.animals
+        self.daily_yields += other.daily_yields
+        self.milk_records += other.milk_records
+        self.rejected += other.rejected
+        return self
 
 
 def clear() -> None:

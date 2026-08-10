@@ -10,7 +10,8 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from farms.services.adapters.base import EAR_TAG_COUNTRY_CODE
-from farms.services.generation import FarmData
+from farms.services.adapters.milk_recording import BREED_CODES, SCC_THOUSANDS
+from farms.services.generation import AnimalData, FarmData, MilkRecordData
 
 MILKING_ROBOT_HEADER = "crotal;fecha;hora;kg"
 
@@ -63,3 +64,77 @@ def _dmy(day: date) -> str:
 
 def _comma(value: Decimal) -> str:
     return str(value).replace(".", ",")
+
+
+MILK_RECORDING_TITLE = "CONTROL LECHERO OFICIAL"
+MILK_RECORDING_SEPARATOR = "--"
+SCC_MISSING = "9999999"
+
+# El vocabulario del modelo traducido al código de la fuente: la inversa del
+# mapeo del adaptador, para que el código de cada raza se declare una sola vez.
+BREED_TO_CODE = {breed: code for code, breed in BREED_CODES.items()}
+
+
+def milk_recording_feeds(farm: FarmData) -> dict[date, str]:
+    """Informes mensuales del núcleo de control, uno por fecha de control.
+
+    Cada informe lista el rebaño entero de esa fecha, no solo los animales
+    medidos: el censo es lo que esta fuente aporta y ninguna otra sabe.
+    """
+    dates = sorted({record.date for a in farm.animals for record in a.milk_records})
+    return {control_date: _milk_recording_report(farm, control_date) for control_date in dates}
+
+
+def _milk_recording_report(farm: FarmData, control_date: date) -> str:
+    """Un informe: cabecera con claves y una línea de ancho fijo por animal."""
+    lines = [
+        MILK_RECORDING_TITLE,
+        f"EXPLOTACION: {farm.code}",
+        f"NOMBRE     : {farm.name}",
+        f"CONCELLO   : {farm.municipality}",
+        f"PROVINCIA  : {farm.province}",
+        f"FECHA      : {control_date:%Y%m%d}",
+        MILK_RECORDING_SEPARATOR,
+    ]
+    for animal in farm.animals:
+        if animal.culled_date is not None and animal.culled_date < control_date:
+            continue  # dado de baja: deja de figurar en los informes siguientes
+        record = next((r for r in animal.milk_records if r.date == control_date), None)
+        lines.append(_milk_recording_row(animal, record))
+    return "\n".join(lines)
+
+
+def _milk_recording_row(animal: AnimalData, record: MilkRecordData | None) -> str:
+    """Una línea de ancho fijo: identidad siempre, analítica solo si hubo control."""
+    row = (
+        f"{_spaced_ear_tag(animal.ear_tag):<20}"
+        f"{animal.birth_date:%Y%m%d}"
+        f"{BREED_TO_CODE[animal.breed]}"
+        f"{animal.lactation_number:02d}"
+        f"{_compact(animal.last_calving_date)}"
+        f"{_compact(animal.culled_date)}"
+        f"{'S' if record else 'N'}"
+    )
+    if record is None:
+        return row
+    return (
+        f"{row}"
+        f"{_comma(record.fat_pct):>5}"
+        f"{_comma(record.protein_pct):>5}"
+        f"{_thousands(record.somatic_cell_count)}"
+    )
+
+
+def _spaced_ear_tag(ear_tag: str) -> str:
+    """El núcleo de control escribe el crotal por bloques, no de corrido."""
+    country, digits = ear_tag[:2], ear_tag[2:]
+    return f"{country} {digits[:4]} {digits[4:8]} {digits[8:]}"
+
+
+def _compact(day: date | None) -> str:
+    return f"{day:%Y%m%d}" if day is not None else " " * 8
+
+
+def _thousands(count: int | None) -> str:
+    """Miles de células por mililitro; el centinela ocupa el mismo ancho."""
+    return SCC_MISSING if count is None else f"{count // SCC_THOUSANDS:07d}"

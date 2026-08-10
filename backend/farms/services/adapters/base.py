@@ -66,3 +66,8 @@ def parse_decimal(raw: str, *, decimal_separator: str = ".") -> Decimal:
         return Decimal(text)
     except InvalidOperation as exc:
         raise ValueError(f"no es un número: {raw!r}") from exc
+
+
+def parse_compact_date(raw: str) -> date:
+    """Fecha en `AAAAMMDD`, sin separadores."""
+    return datetime.strptime(raw.strip(), "%Y%m%d").date()
