@@ -3,14 +3,16 @@
 La entrega es la exportación plana de un cuaderno llevado en hoja de cálculo:
 secciones entre corchetes, una fila de encabezados por sección y filas separadas
 por tabulador. Aporta la base territorial de la explotación —parcelas, campañas
-y los silos que salen de ellas— y escribe las fechas como las teclea quien lleva
-el cuaderno, con el año en dos cifras.
+y los silos que salen de ellas— y lo que se formula con ese forraje: las
+raciones con sus ingredientes. Escribe las fechas como las teclea quien lleva el
+cuaderno, con el año en dos cifras.
 """
 
+from collections.abc import Callable
 from datetime import date
 from typing import ClassVar
 
-from farms.models import Crop, SourceSystem
+from farms.models import Crop, RawMaterial, SourceSystem
 from farms.services.adapters.base import (
     AdapterError,
     parse_decimal,
@@ -20,6 +22,9 @@ from farms.services.canonical import (
     CanonicalBatch,
     CropRecord,
     PlotRecord,
+    RationIngredientRecord,
+    RationRecord,
+    RawMaterialRecord,
     Reject,
     SilageRecord,
 )
@@ -33,6 +38,9 @@ MISSING = "-"
 SECTION_PLOTS = "[PARCELAS]"
 SECTION_CROPS = "[CULTIVOS]"
 SECTION_SILAGES = "[SILOS]"
+SECTION_RAW_MATERIALS = "[MATERIAS_PRIMAS]"
+SECTION_RATIONS = "[RACIONES]"
+SECTION_INGREDIENTS = "[INGREDIENTES]"
 
 # Encabezados de cada sección: el contrato con la fuente, en un solo sitio, para
 # que el emisor del mock y este adaptador no puedan divergir sin que se note.
@@ -40,6 +48,9 @@ COLUMNS = {
     SECTION_PLOTS: ("codigo", "nombre", "superficie_ha"),
     SECTION_CROPS: ("parcela", "especie", "campaña", "siembra", "cosecha"),
     SECTION_SILAGES: ("parcela", "campaña", "especie", "codigo", "cierre", "apertura"),
+    SECTION_RAW_MATERIALS: ("nombre", "categoria"),
+    SECTION_RATIONS: ("nombre", "formulacion"),
+    SECTION_INGREDIENTS: ("racion", "formulacion", "tipo", "referencia", "kg_ms"),
 }
 
 # Códigos de especie del cuaderno traducidos al vocabulario del modelo.
@@ -49,11 +60,36 @@ SPECIES_CODES = {
     "PRADERA": Crop.Species.GRASS_MIX,
 }
 
+# Categorías de materia prima, con el mismo criterio que las especies.
+CATEGORY_CODES = {
+    "CONCENTRADO": RawMaterial.Category.CONCENTRATE,
+    "FORRAJE": RawMaterial.Category.FORAGE,
+    "SUBPRODUCTO": RawMaterial.Category.BYPRODUCT,
+    "MINERAL": RawMaterial.Category.MINERAL,
+    "OTRA": RawMaterial.Category.OTHER,
+}
+
+# Origen de un ingrediente. En el modelo son dos claves ajenas excluyentes; en el
+# fichero son una columna de tipo y otra de referencia, que es como lo escribe
+# quien formula: «de mi silo tal» o «del saco tal».
+INGREDIENT_SILAGE = "SILO"
+INGREDIENT_RAW_MATERIAL = "MATERIA_PRIMA"
+
 
 class FieldNotebookAdapter:
     """Traduce la exportación de un cuaderno de campo al modelo canónico."""
 
     source: ClassVar[SourceSystem] = SourceSystem.FIELD_NOTEBOOK
+
+    def __init__(self) -> None:
+        self._parsers: dict[str, Callable[[list[str], str, CanonicalBatch], None]] = {
+            SECTION_PLOTS: self._parse_plot,
+            SECTION_CROPS: self._parse_crop,
+            SECTION_SILAGES: self._parse_silage,
+            SECTION_RAW_MATERIALS: self._parse_raw_material,
+            SECTION_RATIONS: self._parse_ration,
+            SECTION_INGREDIENTS: self._parse_ingredient,
+        }
 
     def parse(self, payload: str) -> CanonicalBatch:
         """Recorre las secciones y traduce cada fila a su hecho canónico.
@@ -82,7 +118,8 @@ class FieldNotebookAdapter:
                 expect_columns = False
                 continue
             try:
-                self._parse_row(section, raw, farm_code, batch)
+                fields = _fields(raw, len(COLUMNS[section]))
+                self._parsers[section](fields, farm_code, batch)
             except ValueError as exc:
                 batch.rejects.append(Reject(line_number=number, raw=raw, reason=str(exc)))
         return batch
@@ -111,43 +148,80 @@ class FieldNotebookAdapter:
         if found != COLUMNS[section]:
             raise AdapterError(f"[{self.source}] encabezados inesperados en {section}: {found}")
 
-    def _parse_row(self, section: str, raw: str, farm_code: str, batch: CanonicalBatch) -> None:
-        """Reparte la fila al hecho que le corresponde según su sección."""
-        if section == SECTION_PLOTS:
-            code, name, area = _fields(raw, 3)
-            batch.plots.append(
-                PlotRecord(
-                    farm_code=farm_code,
-                    code=code,
-                    name=name,
-                    area_ha=parse_decimal(area, decimal_separator=","),
-                )
+    def _parse_plot(self, fields: list[str], farm_code: str, batch: CanonicalBatch) -> None:
+        code, name, area = fields
+        batch.plots.append(
+            PlotRecord(
+                farm_code=farm_code,
+                code=code,
+                name=name,
+                area_ha=parse_decimal(area, decimal_separator=","),
             )
-        elif section == SECTION_CROPS:
-            plot_code, species, season, sowing, harvest = _fields(raw, 5)
-            batch.crops.append(
-                CropRecord(
-                    farm_code=farm_code,
-                    plot_code=plot_code,
-                    species=_species(species),
-                    season=int(season),
-                    sowing_date=_optional_date(sowing),
-                    harvest_date=_optional_date(harvest),
-                )
+        )
+
+    def _parse_crop(self, fields: list[str], farm_code: str, batch: CanonicalBatch) -> None:
+        plot_code, species, season, sowing, harvest = fields
+        batch.crops.append(
+            CropRecord(
+                farm_code=farm_code,
+                plot_code=plot_code,
+                species=_species(species),
+                season=int(season),
+                sowing_date=_optional_date(sowing),
+                harvest_date=_optional_date(harvest),
             )
-        else:
-            plot_code, season, species, code, sealed, opened = _fields(raw, 6)
-            batch.silages.append(
-                SilageRecord(
-                    farm_code=farm_code,
-                    plot_code=plot_code,
-                    season=int(season),
-                    species=_species(species),
-                    code=code,
-                    sealed_date=_optional_date(sealed),
-                    opened_date=_optional_date(opened),
-                )
+        )
+
+    def _parse_silage(self, fields: list[str], farm_code: str, batch: CanonicalBatch) -> None:
+        plot_code, season, species, code, sealed, opened = fields
+        batch.silages.append(
+            SilageRecord(
+                farm_code=farm_code,
+                plot_code=plot_code,
+                season=int(season),
+                species=_species(species),
+                code=code,
+                sealed_date=_optional_date(sealed),
+                opened_date=_optional_date(opened),
             )
+        )
+
+    def _parse_raw_material(self, fields: list[str], farm_code: str, batch: CanonicalBatch) -> None:
+        """La materia prima es catálogo común: no lleva explotación."""
+        name, category = fields
+        if category not in CATEGORY_CODES:
+            raise ValueError(f"categoría desconocida: {category!r}")
+        batch.raw_materials.append(RawMaterialRecord(name=name, category=CATEGORY_CODES[category]))
+
+    def _parse_ration(self, fields: list[str], farm_code: str, batch: CanonicalBatch) -> None:
+        name, formulated_on = fields
+        batch.rations.append(
+            RationRecord(
+                farm_code=farm_code,
+                name=name,
+                formulated_on=parse_short_year_date(formulated_on),
+            )
+        )
+
+    def _parse_ingredient(self, fields: list[str], farm_code: str, batch: CanonicalBatch) -> None:
+        """Un componente, con su origen en una columna en vez de en dos campos.
+
+        El fichero dice de qué tipo es y a qué se refiere; el canónico lo separa
+        en las dos referencias excluyentes que espera el modelo.
+        """
+        ration_name, formulated_on, kind, reference, kg = fields
+        if kind not in (INGREDIENT_SILAGE, INGREDIENT_RAW_MATERIAL):
+            raise ValueError(f"tipo de ingrediente desconocido: {kind!r}")
+        batch.ration_ingredients.append(
+            RationIngredientRecord(
+                farm_code=farm_code,
+                ration_name=ration_name,
+                formulated_on=parse_short_year_date(formulated_on),
+                silage_code=reference if kind == INGREDIENT_SILAGE else None,
+                raw_material_name=reference if kind == INGREDIENT_RAW_MATERIAL else None,
+                dry_matter_kg=parse_decimal(kg, decimal_separator=","),
+            )
+        )
 
 
 def _fields(raw: str, expected: int) -> list[str]:

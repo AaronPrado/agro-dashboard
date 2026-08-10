@@ -108,6 +108,39 @@ class SilageRecord:
     opened_date: date | None
 
 
+@dataclass(frozen=True, slots=True)
+class RawMaterialRecord:
+    """Materia prima comprada. Es catálogo común, no de una explotación."""
+
+    name: str
+    category: str
+
+
+@dataclass(frozen=True, slots=True)
+class RationRecord:
+    """Ración formulada. La identifican explotación, nombre y fecha."""
+
+    farm_code: str
+    name: str
+    formulated_on: date
+
+
+@dataclass(frozen=True, slots=True)
+class RationIngredientRecord:
+    """Componente de una ración, referido a ella por su clave natural entera.
+
+    `silage_code` y `raw_material_name` son excluyentes, igual que en el modelo:
+    el componente es un silo propio o algo comprado, nunca las dos cosas.
+    """
+
+    farm_code: str
+    ration_name: str
+    formulated_on: date
+    silage_code: str | None
+    raw_material_name: str | None
+    dry_matter_kg: Decimal
+
+
 @dataclass(slots=True)
 class CanonicalBatch:
     """Lo que entrega un adaptador tras normalizar una entrega de su fuente.
@@ -125,4 +158,7 @@ class CanonicalBatch:
     plots: list[PlotRecord] = field(default_factory=list)
     crops: list[CropRecord] = field(default_factory=list)
     silages: list[SilageRecord] = field(default_factory=list)
+    raw_materials: list[RawMaterialRecord] = field(default_factory=list)
+    rations: list[RationRecord] = field(default_factory=list)
+    ration_ingredients: list[RationIngredientRecord] = field(default_factory=list)
     rejects: list[Reject] = field(default_factory=list)

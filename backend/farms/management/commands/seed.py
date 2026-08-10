@@ -103,7 +103,9 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 f"Sembrado: {summary.farms} altas de explotación, "
                 f"{summary.plots} parcelas, {summary.crops} campañas, "
-                f"{summary.silages} silos, {summary.animals} altas de animal, "
+                f"{summary.silages} silos, {summary.rations} raciones "
+                f"con {summary.ration_ingredients} ingredientes, "
+                f"{summary.animals} altas de animal, "
                 f"{summary.daily_yields} producciones diarias, "
                 f"{summary.milk_records} controles, "
                 f"{summary.rejected} registros rechazados "

@@ -6,9 +6,12 @@ cuando la hay, marca «modelado» cuando no la hay.
 """
 
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+
+from farms.services.dairy import LACTATION_DAYS
 
 # La rotación dominante en el vacuno de leche gallego es maíz forrajero como
 # cultivo de verano con raigrás italiano como cultivo de invierno: se practica en
@@ -115,3 +118,91 @@ def _date_in_window(
     start = date(year, start_month, start_day)
     end = date(year, end_month, end_day)
     return start + timedelta(days=rng.randint(0, (end - start).days))
+
+
+# --- Alimentación: cómo se lotea el rebaño y qué come cada lote ---
+
+# Ingesta de materia seca: las fuentes divulgativas del sector sitúan el consumo
+# entre el 3 % y el 4 % del peso vivo, con ~3,2 % para una vaca en producción.
+# Con un peso vivo de referencia de unos 650 kg para Frisona adulta —que está
+# [sin verificar]— salen unos 21 kg de MS al día. Los valores por grupo se
+# separan a partir de ahí.  [orden de magnitud verificado; reparto modelado]
+#
+# La proporción de forraje sobre materia seca y el umbral de días en leche que
+# separa alta de baja producción son decisiones de manejo, no constantes del
+# sector: varían de una explotación a otra.  [modelado]
+
+
+@dataclass(frozen=True, slots=True)
+class FeedingGroup:
+    """Grupo de manejo: un lote de animales y la ración que se le formula.
+
+    `max_days_in_milk` marca hasta qué día de lactación pertenece un animal a
+    este grupo; nulo identifica al grupo de las secas, que es donde caen las que
+    ya han pasado el secado.
+    """
+
+    batch_name: str
+    ration_name: str
+    dry_matter_kg: Decimal
+    forage_share: Decimal
+    max_days_in_milk: int | None
+
+
+FEEDING_GROUPS = (
+    FeedingGroup("Alta producción", "Lactación alta", Decimal("23.0"), Decimal("0.58"), 120),
+    FeedingGroup(
+        "Baja producción", "Lactación baja", Decimal("19.0"), Decimal("0.66"), LACTATION_DAYS
+    ),
+    FeedingGroup("Secas", "Secado", Decimal("12.0"), Decimal("0.90"), None),
+)
+
+# Materias primas habituales en el vacuno de leche. Los nombres y su categoría
+# son nomenclatura estándar del sector; las proporciones entre ellas son una
+# formulación plausible construida para que sume, no una recomendación
+# nutricional, y ningún valor de este bloque debe leerse como tal.  [modelado]
+RAW_MATERIALS = (
+    ("Maíz grano", "concentrate"),
+    ("Harina de soja 44", "concentrate"),
+    ("Pulpa de remolacha", "byproduct"),
+    ("Corrector mineral-vitamínico", "mineral"),
+)
+CONCENTRATE_MIX = {
+    "Maíz grano": Decimal("0.45"),
+    "Harina de soja 44": Decimal("0.28"),
+    "Pulpa de remolacha": Decimal("0.24"),
+    "Corrector mineral-vitamínico": Decimal("0.03"),
+}
+
+# Cada cuántos días se reformula, y cuántos silos entran a la vez en la ración.
+RATION_INTERVAL_DAYS = 120  # [modelado]
+SILAGES_PER_RATION = 2  # [modelado]
+
+
+def ration_ingredients(
+    group: FeedingGroup, silage_codes: Sequence[str]
+) -> tuple[list[tuple[str, Decimal]], list[tuple[str, Decimal]]]:
+    """Reparte los kg de materia seca del grupo entre silos y materias primas.
+
+    Devuelve dos listas de (referencia, kg de MS). El último componente de cada
+    mitad absorbe el resto del redondeo, de modo que la suma de los ingredientes
+    es exactamente la ingesta declarada del grupo y no un céntimo menos.
+    """
+    forage_kg = (group.dry_matter_kg * group.forage_share).quantize(Decimal("0.01"))
+    silages = _split_evenly(forage_kg, list(silage_codes))
+    concentrate = _split_by_share(group.dry_matter_kg - forage_kg, CONCENTRATE_MIX)
+    return silages, concentrate
+
+
+def _split_evenly(total: Decimal, keys: list[str]) -> list[tuple[str, Decimal]]:
+    """Reparte a partes iguales conservando la suma exacta."""
+    share = (total / len(keys)).quantize(Decimal("0.01"))
+    parts = [(key, share) for key in keys[:-1]]
+    return [*parts, (keys[-1], total - share * (len(keys) - 1))]
+
+
+def _split_by_share(total: Decimal, shares: dict[str, Decimal]) -> list[tuple[str, Decimal]]:
+    """Reparte según proporciones dadas, con el último absorbiendo el resto."""
+    keys = list(shares)
+    parts = [(key, (total * shares[key]).quantize(Decimal("0.01"))) for key in keys[:-1]]
+    return [*parts, (keys[-1], total - sum(kg for _, kg in parts))]

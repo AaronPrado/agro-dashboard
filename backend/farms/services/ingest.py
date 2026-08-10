@@ -9,12 +9,15 @@ y resolverlos a clave primaria es el trabajo de este módulo.
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import date
 from typing import Self
 
 from django.db import transaction
 
 from farms.models import (
+    AnalysisResult,
     Animal,
+    BatchRation,
     Crop,
     DailyYield,
     Farm,
@@ -22,6 +25,9 @@ from farms.models import (
     IngestionRun,
     MilkRecord,
     Plot,
+    Ration,
+    RationIngredient,
+    RawMaterial,
     Silage,
 )
 from farms.services.canonical import (
@@ -32,6 +38,9 @@ from farms.services.canonical import (
     MilkQualityRecord,
     PlotRecord,
     ProductionReading,
+    RationIngredientRecord,
+    RationRecord,
+    RawMaterialRecord,
     Reject,
     SilageRecord,
 )
@@ -60,6 +69,9 @@ class LoadSummary:
     plots: int = 0
     crops: int = 0
     silages: int = 0
+    raw_materials: int = 0
+    rations: int = 0
+    ration_ingredients: int = 0
 
     @property
     def loaded(self) -> int:
@@ -69,6 +81,9 @@ class LoadSummary:
             + self.plots
             + self.crops
             + self.silages
+            + self.raw_materials
+            + self.rations
+            + self.ration_ingredients
             + self.animals
             + self.daily_yields
             + self.milk_records
@@ -84,17 +99,27 @@ class LoadSummary:
         self.plots += other.plots
         self.crops += other.crops
         self.silages += other.silages
+        self.raw_materials += other.raw_materials
+        self.rations += other.rations
+        self.ration_ingredients += other.ration_ingredients
         return self
 
 
 def clear() -> None:
-    """Vacía lo sembrado: primero los hechos, después las cargas.
+    """Vacía lo sembrado, en el orden que exigen las claves ajenas protegidas.
 
-    El orden no es opcional. La procedencia va con `PROTECT`, así que borrar una
-    carga antes que sus filas lo rechaza la base de datos.
+    `PROTECT` está puesto donde borrar destruiría historia —un silo usado en una
+    ración, una ración asignada a un lote, el analito de un resultado, la carga
+    que trajo una fila—, así que el borrado no puede ir de la raíz hacia abajo:
+    hay que quitar antes a quien referencia. Cada línea de este cuerpo es una de
+    esas protecciones, y por eso están comentadas una a una.
     """
-    Farm.objects.all().delete()
-    IngestionRun.objects.all().delete()
+    RationIngredient.objects.all().delete()  # protege Silage y RawMaterial
+    BatchRation.objects.all().delete()  # protege Ration
+    AnalysisResult.objects.all().delete()  # protege Analyte
+    Farm.objects.all().delete()  # el CASCADE arrastra el resto del dominio
+    RawMaterial.objects.all().delete()  # catálogo sembrado por el cuaderno
+    IngestionRun.objects.all().delete()  # protegida por toda fila con procedencia
 
 
 @transaction.atomic
@@ -112,6 +137,9 @@ def load(batch: CanonicalBatch, *, reference: str = "") -> tuple[IngestionRun, L
     _load_plots(batch.plots, run, summary)
     _load_crops(batch.crops, run, summary)
     _load_silages(batch.silages, run, summary)
+    _load_raw_materials(batch.raw_materials, summary)
+    _load_rations(batch.rations, run, summary)
+    _load_ration_ingredients(batch.ration_ingredients, run, summary)
     _load_animals(batch.animals, run, summary)
     _load_production(batch.production, run, summary)
     _load_quality(batch.quality, run, summary)
@@ -196,6 +224,81 @@ def _load_silages(records: Iterable[SilageRecord], run: IngestionRun, summary: L
             },
         )
         summary.silages += 1
+
+
+def _load_raw_materials(records: Iterable[RawMaterialRecord], summary: LoadSummary) -> None:
+    """Alta de materias primas en el catálogo común.
+
+    No recibe la carga: `RawMaterial` es catálogo, no observación. Es la misma
+    frontera que separa lo que alguien entrega de lo que la plataforma mantiene,
+    y por eso este modelo no lleva procedencia.
+    """
+    for record in records:
+        RawMaterial.objects.update_or_create(
+            name=record.name,
+            defaults={"category": record.category},
+        )
+        summary.raw_materials += 1
+
+
+def _load_rations(records: Iterable[RationRecord], run: IngestionRun, summary: LoadSummary) -> None:
+    """Alta o actualización de raciones: explotación, nombre y fecha las identifican.
+
+    Una ración es una formulación cerrada, así que reformular es crear otra, no
+    editar esta: por eso la fecha forma parte de la clave natural.
+    """
+    records = list(records)
+    if not records:
+        return
+    farms = _farm_ids({record.farm_code for record in records})
+    for record in records:
+        Ration.objects.update_or_create(
+            farm_id=farms[record.farm_code],
+            name=record.name,
+            formulated_on=record.formulated_on,
+            defaults={"ingestion_run": run},
+        )
+        summary.rations += 1
+
+
+def _load_ration_ingredients(
+    records: Iterable[RationIngredientRecord], run: IngestionRun, summary: LoadSummary
+) -> None:
+    """Escribe los componentes de cada ración, resolviendo sus dos orígenes.
+
+    El origen es excluyente en el modelo —silo propio o materia prima, nunca las
+    dos cosas— y llega ya separado del adaptador, así que aquí solo hay que
+    traducir cada referencia a su clave primaria.
+    """
+    records = list(records)
+    if not records:
+        return
+    rations = _ration_ids(
+        {(record.farm_code, record.ration_name, record.formulated_on) for record in records}
+    )
+    silages = _silage_ids(
+        {(r.farm_code, r.silage_code) for r in records if r.silage_code is not None}
+    )
+    materials = _raw_material_ids(
+        {r.raw_material_name for r in records if r.raw_material_name is not None}
+    )
+    for record in records:
+        ration_id = rations[(record.farm_code, record.ration_name, record.formulated_on)]
+        RationIngredient.objects.update_or_create(
+            ration_id=ration_id,
+            silage_id=(
+                silages[(record.farm_code, record.silage_code)]
+                if record.silage_code is not None
+                else None
+            ),
+            raw_material_id=(
+                materials[record.raw_material_name]
+                if record.raw_material_name is not None
+                else None
+            ),
+            defaults={"dry_matter_kg": record.dry_matter_kg, "ingestion_run": run},
+        )
+        summary.ration_ingredients += 1
 
 
 def _load_animals(
@@ -352,4 +455,48 @@ def _crop_ids(keys: set[tuple[str, str, int, str]]) -> dict[tuple[str, str, int,
     missing = keys - found.keys()
     if missing:
         raise IngestionError(f"campañas no registradas: {sorted(missing)}")
+    return found
+
+
+def _silage_ids(keys: set[tuple[str, str]]) -> dict[tuple[str, str], int]:
+    """Resuelve (código de explotación, código de silo) a clave primaria.
+
+    El esquema garantiza el código único por campaña, no por explotación, así que
+    dos campañas de la misma granja podrían repetirlo. Quien formula una ración
+    escribe solo el código del silo, de modo que si eso ocurre la referencia es
+    ambigua y hay que decirlo en vez de quedarse con una de las dos.
+    """
+    codes = {silage_code for _, silage_code in keys}
+    rows = Silage.objects.filter(code__in=codes).values_list("crop__plot__farm__code", "code", "id")
+    found: dict[tuple[str, str], int] = {}
+    for farm_code, silage_code, pk in rows:
+        key = (farm_code, silage_code)
+        if key in found:
+            raise IngestionError(f"código de silo ambiguo en la explotación: {key}")
+        found[key] = pk
+    missing = keys - found.keys()
+    if missing:
+        raise IngestionError(f"silos no registrados: {sorted(missing)}")
+    return found
+
+
+def _ration_ids(keys: set[tuple[str, str, date]]) -> dict[tuple[str, str, date], int]:
+    """Resuelve (explotación, nombre, fecha de formulación) a clave primaria."""
+    names = {name for _, name, _ in keys}
+    rows = Ration.objects.filter(name__in=names).values_list(
+        "farm__code", "name", "formulated_on", "id"
+    )
+    found = {(farm, name, formulated_on): pk for farm, name, formulated_on, pk in rows}
+    missing = keys - found.keys()
+    if missing:
+        raise IngestionError(f"raciones no registradas: {sorted(missing)}")
+    return found
+
+
+def _raw_material_ids(names: set[str]) -> dict[str, int]:
+    """Resuelve nombres de materia prima a clave primaria en una sola consulta."""
+    found = dict(RawMaterial.objects.filter(name__in=names).values_list("name", "id"))
+    missing = names - found.keys()
+    if missing:
+        raise IngestionError(f"materias primas no registradas: {sorted(missing)}")
     return found

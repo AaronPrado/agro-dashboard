@@ -18,9 +18,12 @@ from farms.models import (
     IngestionRun,
     MilkRecord,
     Plot,
+    Ration,
+    RationIngredient,
     Silage,
     SourceSystem,
 )
+from farms.services.agronomy import FEEDING_GROUPS
 
 START = datetime.date(2026, 1, 1)
 END = datetime.date(2026, 3, 31)
@@ -93,6 +96,44 @@ def test_hay_silo_disponible_antes_de_que_empiece_la_ventana():
     _seed()
 
     assert Silage.objects.filter(opened_date__lt=START).exists()
+
+
+@pytest.mark.django_db
+def test_las_raciones_se_formulan_con_silos_de_la_propia_explotacion():
+    """El hilo se cierra: lo cosechado en la parcela acaba en el pesebre."""
+    _seed()
+
+    assert Ration.objects.exists()
+    for ingredient in RationIngredient.objects.select_related(
+        "ration__farm", "silage__crop__plot__farm"
+    ):
+        if ingredient.silage_id is not None:
+            assert ingredient.silage.crop.plot.farm_id == ingredient.ration.farm_id
+
+
+@pytest.mark.django_db
+def test_cada_ingrediente_tiene_un_origen_y_solo_uno():
+    """La restricción XOR del modelo, comprobada sobre el dato realmente sembrado."""
+    _seed()
+
+    for ingredient in RationIngredient.objects.all():
+        assert (ingredient.silage_id is None) != (ingredient.raw_material_id is None)
+        assert ingredient.dry_matter_kg > 0
+
+
+@pytest.mark.django_db
+def test_la_racion_suma_la_ingesta_declarada_del_grupo():
+    """Los kg de materia seca de una ración cuadran con el grupo de manejo.
+
+    Si el reparto entre silos y concentrado perdiera un céntimo por redondeo, la
+    ración diría alimentar menos de lo que declara su grupo.
+    """
+    _seed()
+
+    ingestas = {group.ration_name: group.dry_matter_kg for group in FEEDING_GROUPS}
+    for ration in Ration.objects.prefetch_related("ingredients"):
+        total = sum(ingredient.dry_matter_kg for ingredient in ration.ingredients.all())
+        assert total == ingestas[ration.name]
 
 
 @pytest.mark.django_db

@@ -10,8 +10,15 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from farms.services.adapters.base import EAR_TAG_COUNTRY_CODE
-from farms.services.adapters.field_notebook import COLUMNS, SPECIES_CODES
+from farms.services.adapters.field_notebook import (
+    CATEGORY_CODES,
+    COLUMNS,
+    INGREDIENT_RAW_MATERIAL,
+    INGREDIENT_SILAGE,
+    SPECIES_CODES,
+)
 from farms.services.adapters.milk_recording import BREED_CODES, SCC_THOUSANDS
+from farms.services.agronomy import RAW_MATERIALS
 from farms.services.generation import AnimalData, FarmData, MilkRecordData
 
 MILKING_ROBOT_HEADER = "crotal;fecha;hora;kg"
@@ -145,29 +152,29 @@ FIELD_NOTEBOOK_TITLE = "CUADERNO DE CAMPO"
 NOTEBOOK_SEPARATOR = "\t"
 NOTEBOOK_MISSING = "-"
 
-# La inversa del mapeo del adaptador, por el mismo motivo que en las razas: el
-# código de cada especie se declara una sola vez.
+# Las inversas de los mapeos del adaptador, por el mismo motivo que en las razas:
+# el código de cada especie y de cada categoría se declara una sola vez.
 SPECIES_TO_CODE = {species: code for code, species in SPECIES_CODES.items()}
+CATEGORY_TO_CODE = {category: code for code, category in CATEGORY_CODES.items()}
 
 
 def field_notebook_feed(farm: FarmData) -> str:
     """Exportación plana del cuaderno de campo de una explotación.
 
-    Tres secciones con sus encabezados, filas separadas por tabulador, coma
-    decimal y fechas con el año en dos cifras, que es como quedan al exportar
-    una hoja de cálculo llevada a mano.
+    Seis secciones con sus encabezados, filas separadas por tabulador, coma
+    decimal y fechas con el año en dos cifras, que es como quedan al exportar una
+    hoja de cálculo llevada a mano.
     """
     lines = [
         FIELD_NOTEBOOK_TITLE,
         f"EXPLOTACION{NOTEBOOK_SEPARATOR}{farm.code}",
         "--",
-        "[PARCELAS]",
-        NOTEBOOK_SEPARATOR.join(COLUMNS["[PARCELAS]"]),
     ]
+    lines += _notebook_section("[PARCELAS]")
     for plot in farm.plots:
-        lines.append(_notebook_row(plot.code, plot.name, f"{plot.area_ha:.2f}".replace(".", ",")))
+        lines.append(_notebook_row(plot.code, plot.name, _comma_2dp(plot.area_ha)))
 
-    lines += ["[CULTIVOS]", NOTEBOOK_SEPARATOR.join(COLUMNS["[CULTIVOS]"])]
+    lines += _notebook_section("[CULTIVOS]")
     for plot in farm.plots:
         for crop in plot.crops:
             lines.append(
@@ -180,7 +187,7 @@ def field_notebook_feed(farm: FarmData) -> str:
                 )
             )
 
-    lines += ["[SILOS]", NOTEBOOK_SEPARATOR.join(COLUMNS["[SILOS]"])]
+    lines += _notebook_section("[SILOS]")
     for plot in farm.plots:
         for crop in plot.crops:
             for silage in crop.silages:
@@ -194,11 +201,43 @@ def field_notebook_feed(farm: FarmData) -> str:
                         _short_year(silage.opened_date),
                     )
                 )
+
+    lines += _notebook_section("[MATERIAS_PRIMAS]")
+    for name, category in RAW_MATERIALS:
+        lines.append(_notebook_row(name, CATEGORY_TO_CODE[category]))
+
+    lines += _notebook_section("[RACIONES]")
+    for ration in farm.rations:
+        lines.append(_notebook_row(ration.name, _short_year(ration.formulated_on)))
+
+    lines += _notebook_section("[INGREDIENTES]")
+    for ration in farm.rations:
+        for ingredient in ration.ingredients:
+            silo = ingredient.silage_code is not None
+            lines.append(
+                _notebook_row(
+                    ration.name,
+                    _short_year(ration.formulated_on),
+                    INGREDIENT_SILAGE if silo else INGREDIENT_RAW_MATERIAL,
+                    ingredient.silage_code if silo else ingredient.raw_material,
+                    _comma_2dp(ingredient.dry_matter_kg),
+                )
+            )
     return "\n".join(lines)
+
+
+def _notebook_section(name: str) -> list[str]:
+    """Marcador de sección y su fila de encabezados, tomada del contrato."""
+    return [name, NOTEBOOK_SEPARATOR.join(COLUMNS[name])]
 
 
 def _notebook_row(*values: str) -> str:
     return NOTEBOOK_SEPARATOR.join(values)
+
+
+def _comma_2dp(value: Decimal) -> str:
+    """Número con dos decimales y coma, como lo escribe una hoja de cálculo."""
+    return f"{value:.2f}".replace(".", ",")
 
 
 def _short_year(day: date | None) -> str:

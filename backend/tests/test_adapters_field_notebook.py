@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from farms.models import Crop, SourceSystem
+from farms.models import Crop, RawMaterial, SourceSystem
 from farms.services.adapters.base import AdapterError
 from farms.services.adapters.field_notebook import FieldNotebookAdapter
 
@@ -18,6 +18,9 @@ HEADER = ["CUADERNO DE CAMPO", "EXPLOTACION\tcasa-grande", "--"]
 PARCELAS = ["[PARCELAS]", "codigo\tnombre\tsuperficie_ha"]
 CULTIVOS = ["[CULTIVOS]", "parcela\tespecie\tcampaña\tsiembra\tcosecha"]
 SILOS = ["[SILOS]", "parcela\tcampaña\tespecie\tcodigo\tcierre\tapertura"]
+MATERIAS = ["[MATERIAS_PRIMAS]", "nombre\tcategoria"]
+RACIONES = ["[RACIONES]", "nombre\tformulacion"]
+INGREDIENTES = ["[INGREDIENTES]", "racion\tformulacion\ttipo\treferencia\tkg_ms"]
 
 
 def _feed(*blocks: list[str]) -> str:
@@ -140,3 +143,64 @@ def test_el_lote_declara_de_que_fuente_viene(adapter):
     batch = adapter.parse(_feed([*PARCELAS, "P-01\tLeira do Souto\t2,35"]))
 
     assert batch.source == SourceSystem.FIELD_NOTEBOOK
+
+
+def test_la_materia_prima_es_catalogo_y_no_lleva_explotacion(adapter):
+    """Lo que compra un ganadero lo compran todos: el catálogo es común."""
+    batch = adapter.parse(_feed([*MATERIAS, "Harina de soja 44\tCONCENTRADO"]))
+
+    material = batch.raw_materials[0]
+    assert material.name == "Harina de soja 44"
+    assert material.category == RawMaterial.Category.CONCENTRATE
+    assert not hasattr(material, "farm_code")
+
+
+def test_una_categoria_desconocida_se_rechaza(adapter):
+    """Mismo criterio que con las razas y las especies: no se absorbe en «otra»."""
+    batch = adapter.parse(_feed([*MATERIAS, "Bagazo de cerveza\tHUMEDO"]))
+
+    assert not batch.raw_materials
+    assert "categoría" in batch.rejects[0].reason
+
+
+def test_la_racion_se_identifica_por_nombre_y_fecha_de_formulacion(adapter):
+    """Reformular es crear otra ración, no editar esta: la fecha va en la clave."""
+    batch = adapter.parse(_feed([*RACIONES, "Lactación alta\t01-02-26"]))
+
+    ration = batch.rations[0]
+    assert ration.farm_code == "casa-grande"
+    assert ration.name == "Lactación alta"
+    assert ration.formulated_on == datetime.date(2026, 2, 1)
+
+
+def test_un_ingrediente_de_silo_no_lleva_materia_prima(adapter):
+    """El fichero trae tipo y referencia; el canónico, dos campos excluyentes."""
+    batch = adapter.parse(
+        _feed([*INGREDIENTES, "Lactación alta\t01-02-26\tSILO\tS-2025-P01-M\t6,67"])
+    )
+
+    ingredient = batch.ration_ingredients[0]
+    assert ingredient.silage_code == "S-2025-P01-M"
+    assert ingredient.raw_material_name is None
+    assert ingredient.dry_matter_kg == Decimal("6.67")
+
+
+def test_un_ingrediente_comprado_no_lleva_silo(adapter):
+    """La otra mitad del excluyente, y la que sostiene el CheckConstraint del modelo."""
+    batch = adapter.parse(
+        _feed([*INGREDIENTES, "Lactación alta\t01-02-26\tMATERIA_PRIMA\tMaíz grano\t4,35"])
+    )
+
+    ingredient = batch.ration_ingredients[0]
+    assert ingredient.silage_code is None
+    assert ingredient.raw_material_name == "Maíz grano"
+
+
+def test_un_tipo_de_ingrediente_desconocido_se_rechaza(adapter):
+    """Sin saber si la referencia es un silo o un saco, la fila no se puede anclar."""
+    batch = adapter.parse(
+        _feed([*INGREDIENTES, "Lactación alta\t01-02-26\tPASTO\tPradera de arriba\t5,00"])
+    )
+
+    assert not batch.ration_ingredients
+    assert "tipo de ingrediente" in batch.rejects[0].reason

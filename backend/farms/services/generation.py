@@ -16,11 +16,15 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.utils.text import slugify
 
 from farms.services.agronomy import (
+    FEEDING_GROUPS,
     PLOT_NAMES,
     PLOTS_PER_FARM,
+    RATION_INTERVAL_DAYS,
     ROTATION_SHARE,
+    SILAGES_PER_RATION,
     crop_dates,
     plot_area_ha,
+    ration_ingredients,
     silage_dates,
 )
 from farms.services.dairy import (
@@ -159,8 +163,26 @@ class PlotData:
 
 
 @dataclass(slots=True)
+class RationIngredientData:
+    """Componente de una ración: un silo propio o una materia prima comprada."""
+
+    silage_code: str | None
+    raw_material: str | None
+    dry_matter_kg: Decimal
+
+
+@dataclass(slots=True)
+class RationData:
+    """Ración formulada para un grupo de manejo en una fecha concreta."""
+
+    name: str
+    formulated_on: date
+    ingredients: list[RationIngredientData]
+
+
+@dataclass(slots=True)
 class FarmData:
-    """Granja con sus animales."""
+    """Granja con sus animales, su base territorial y sus raciones."""
 
     name: str
     code: str
@@ -168,6 +190,7 @@ class FarmData:
     province: str
     animals: list[AnimalData]
     plots: list[PlotData]
+    rations: list[RationData]
 
 
 @dataclass(slots=True)
@@ -193,6 +216,7 @@ def _make_farm(rng: random.Random, index: int, params: GenerationParams) -> Farm
         _make_animal(rng, params, ear_tag=f"{EAR_TAG_PREFIX}{index + 1:02d}{n + 1:06d}")
         for n in range(params.animals_per_farm)
     ]
+    plots = _make_plots(rng, params)
     # El índice garantiza un código único aunque se repita el nombre.
     return FarmData(
         name=name,
@@ -200,7 +224,8 @@ def _make_farm(rng: random.Random, index: int, params: GenerationParams) -> Farm
         municipality=municipality,
         province=province,
         animals=animals,
-        plots=_make_plots(rng, params),
+        plots=plots,
+        rations=_make_rations(params, plots),
     )
 
 
@@ -255,6 +280,57 @@ def _make_silage(
         sealed_date=sealed_date,
         opened_date=opened_date,
     )
+
+
+def _make_rations(params: GenerationParams, plots: list[PlotData]) -> list[RationData]:
+    """Raciones formuladas a lo largo de la ventana, una por grupo de manejo.
+
+    Se reformula cada cierto tiempo con los silos que estén abiertos ese día, que
+    es lo que obliga a cambiar de ración en la realidad: al abrir un silo nuevo
+    cambia el forraje y hay que recalcular el resto. Es también lo que hace que
+    la serie de calidad tenga escalones y no una línea plana.
+
+    No consume azar: la fecha de formulación es una rejilla fija y la composición
+    se deriva del grupo de manejo y de los silos disponibles.
+    """
+    opened = sorted(
+        (silage.opened_date, silage.code)
+        for plot in plots
+        for crop in plot.crops
+        for silage in crop.silages
+    )
+    rations: list[RationData] = []
+    day = params.start
+    while day <= params.end:
+        available = [code for opened_date, code in opened if opened_date <= day]
+        if available:
+            rations.extend(_rations_for_day(day, available[-SILAGES_PER_RATION:]))
+        day += timedelta(days=RATION_INTERVAL_DAYS)
+    return rations
+
+
+def _rations_for_day(day: date, silage_codes: list[str]) -> list[RationData]:
+    """Las raciones formuladas una misma fecha: una por grupo de manejo."""
+    rations: list[RationData] = []
+    for group in FEEDING_GROUPS:
+        silages, concentrate = ration_ingredients(group, silage_codes)
+        rations.append(
+            RationData(
+                name=group.ration_name,
+                formulated_on=day,
+                ingredients=[
+                    *(
+                        RationIngredientData(silage_code=code, raw_material=None, dry_matter_kg=kg)
+                        for code, kg in silages
+                    ),
+                    *(
+                        RationIngredientData(silage_code=None, raw_material=name, dry_matter_kg=kg)
+                        for name, kg in concentrate
+                    ),
+                ],
+            )
+        )
+    return rations
 
 
 def _make_animal(rng: random.Random, params: GenerationParams, ear_tag: str) -> AnimalData:
