@@ -141,6 +141,45 @@ class RationIngredientRecord:
     dry_matter_kg: Decimal
 
 
+@dataclass(frozen=True, slots=True)
+class AnimalBatchRecord:
+    """Lote de animales de una explotación."""
+
+    farm_code: str
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class BatchMembershipRecord:
+    """Pertenencia de un animal a un lote durante un intervalo cerrado.
+
+    `date_to` nulo significa vigente, igual que en el modelo. La base solo tolera
+    un periodo abierto por animal.
+    """
+
+    farm_code: str
+    ear_tag: str
+    batch_name: str
+    date_from: date
+    date_to: date | None
+
+
+@dataclass(frozen=True, slots=True)
+class BatchRationRecord:
+    """Ración que come un lote durante un intervalo.
+
+    La ración se identifica por su clave natural entera —nombre y fecha de
+    formulación— porque reformular crea una ración nueva, no edita la anterior.
+    """
+
+    farm_code: str
+    batch_name: str
+    ration_name: str
+    formulated_on: date
+    date_from: date
+    date_to: date | None
+
+
 @dataclass(slots=True)
 class CanonicalBatch:
     """Lo que entrega un adaptador tras normalizar una entrega de su fuente.
@@ -161,4 +200,7 @@ class CanonicalBatch:
     raw_materials: list[RawMaterialRecord] = field(default_factory=list)
     rations: list[RationRecord] = field(default_factory=list)
     ration_ingredients: list[RationIngredientRecord] = field(default_factory=list)
+    batches: list[AnimalBatchRecord] = field(default_factory=list)
+    memberships: list[BatchMembershipRecord] = field(default_factory=list)
+    batch_rations: list[BatchRationRecord] = field(default_factory=list)
     rejects: list[Reject] = field(default_factory=list)

@@ -21,6 +21,9 @@ SILOS = ["[SILOS]", "parcela\tcampaña\tespecie\tcodigo\tcierre\tapertura"]
 MATERIAS = ["[MATERIAS_PRIMAS]", "nombre\tcategoria"]
 RACIONES = ["[RACIONES]", "nombre\tformulacion"]
 INGREDIENTES = ["[INGREDIENTES]", "racion\tformulacion\ttipo\treferencia\tkg_ms"]
+LOTES = ["[LOTES]", "nombre"]
+PERTENENCIAS = ["[PERTENENCIAS]", "crotal\tlote\tdesde\thasta"]
+RACIONES_LOTE = ["[RACIONES_LOTE]", "lote\tracion\tformulacion\tdesde\thasta"]
 
 
 def _feed(*blocks: list[str]) -> str:
@@ -204,3 +207,45 @@ def test_un_tipo_de_ingrediente_desconocido_se_rechaza(adapter):
 
     assert not batch.ration_ingredients
     assert "tipo de ingrediente" in batch.rejects[0].reason
+
+
+def test_el_lote_es_una_seccion_de_una_sola_columna(adapter):
+    """No todas las secciones tienen varias columnas, y el troceo lo respeta."""
+    batch = adapter.parse(_feed([*LOTES, "Alta producción"]))
+
+    assert batch.batches[0].name == "Alta producción"
+    assert batch.batches[0].farm_code == "casa-grande"
+
+
+def test_la_pertenencia_normaliza_el_crotal_que_teclea_el_ganadero(adapter):
+    """El cuaderno no respeta las mayúsculas; la clave canónica sí."""
+    batch = adapter.parse(
+        _feed([*PERTENENCIAS, "es221101000001\tAlta producción\t01-02-26\t31-05-26"])
+    )
+
+    membership = batch.memberships[0]
+    assert membership.ear_tag == "ES221101000001"
+    assert membership.batch_name == "Alta producción"
+    assert membership.date_from == datetime.date(2026, 2, 1)
+    assert membership.date_to == datetime.date(2026, 5, 31)
+
+
+def test_una_pertenencia_vigente_llega_sin_fecha_de_fin(adapter):
+    """El guion es «sigue en el lote», que no es lo mismo que no saber cuándo salió."""
+    batch = adapter.parse(_feed([*PERTENENCIAS, "es221101000001\tSecas\t01-06-26\t-"]))
+
+    assert batch.memberships[0].date_to is None
+
+
+def test_el_periodo_de_racion_identifica_la_racion_entera(adapter):
+    """Nombre y fecha de formulación: reformular crea otra ración, no edita esta."""
+    batch = adapter.parse(
+        _feed([*RACIONES_LOTE, "Alta producción\tLactación alta\t01-02-26\t01-02-26\t-"])
+    )
+
+    period = batch.batch_rations[0]
+    assert period.batch_name == "Alta producción"
+    assert period.ration_name == "Lactación alta"
+    assert period.formulated_on == datetime.date(2026, 2, 1)
+    assert period.date_from == datetime.date(2026, 2, 1)
+    assert period.date_to is None

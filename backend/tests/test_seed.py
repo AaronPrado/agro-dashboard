@@ -6,12 +6,17 @@ exactamente los mismos datos.
 """
 
 import datetime
+import itertools
+from collections import defaultdict
 
 import pytest
 from django.core.management import call_command
+from django.db.utils import IntegrityError
 
 from farms.models import (
     Animal,
+    AnimalBatchMembership,
+    BatchRation,
     Crop,
     DailyYield,
     Farm,
@@ -134,6 +139,75 @@ def test_la_racion_suma_la_ingesta_declarada_del_grupo():
     for ration in Ration.objects.prefetch_related("ingredients"):
         total = sum(ingredient.dry_matter_kg for ingredient in ration.ingredients.all())
         assert total == ingestas[ration.name]
+
+
+@pytest.mark.django_db
+def test_ninguna_pertenencia_se_solapa_con_otra_del_mismo_animal():
+    """El invariante que la base NO comprueba, verificado sobre lo sembrado.
+
+    `update_or_create` no llama a `full_clean()`, así que el no-solape de
+    `DatedPeriod` no protege a la siembra: lo garantiza el generador por
+    construcción. Este test es la comprobación de que esa garantía se cumple, y
+    la evidencia de que el hueco está identificado y no ignorado.
+    """
+    _seed()
+
+    por_animal: dict[int, list[tuple[datetime.date, datetime.date]]] = defaultdict(list)
+    for membership in AnimalBatchMembership.objects.all():
+        hasta = membership.date_to or datetime.date.max
+        por_animal[membership.animal_id].append((membership.date_from, hasta))
+
+    assert por_animal
+    for periodos in por_animal.values():
+        periodos.sort()
+        for anterior, siguiente in itertools.pairwise(periodos):
+            assert anterior[1] < siguiente[0], (anterior, siguiente)
+
+
+@pytest.mark.django_db
+def test_cada_animal_tiene_como_mucho_un_periodo_abierto():
+    """Esta mitad sí la impone la base: es un índice único parcial de PostgreSQL."""
+    _seed()
+
+    abiertos = AnimalBatchMembership.objects.filter(date_to__isnull=True)
+    animales = list(abiertos.values_list("animal_id", flat=True))
+    assert len(animales) == len(set(animales))
+
+
+@pytest.mark.django_db
+def test_la_base_rechaza_un_segundo_periodo_abierto():
+    """El índice único parcial actúa aunque nadie llame a `full_clean()`.
+
+    Es la única mitad del no-solape que sobrevive a una escritura masiva, y por
+    eso conviene tener escrito que funciona.
+    """
+    _seed()
+    abierta = AnimalBatchMembership.objects.filter(date_to__isnull=True).first()
+    assert abierta is not None
+
+    with pytest.raises(IntegrityError):
+        AnimalBatchMembership.objects.create(
+            animal_id=abierta.animal_id,
+            batch_id=abierta.batch_id,
+            date_from=abierta.date_from + datetime.timedelta(days=1),
+        )
+
+
+@pytest.mark.django_db
+def test_cada_lote_come_una_racion_detras_de_otra_sin_solaparse():
+    """Los periodos de ración también son partición: cortes en las formulaciones."""
+    _seed()
+
+    por_lote: dict[int, list[tuple[datetime.date, datetime.date]]] = defaultdict(list)
+    for period in BatchRation.objects.all():
+        hasta = period.date_to or datetime.date.max
+        por_lote[period.batch_id].append((period.date_from, hasta))
+
+    assert por_lote
+    for periodos in por_lote.values():
+        periodos.sort()
+        for anterior, siguiente in itertools.pairwise(periodos):
+            assert anterior[1] < siguiente[0], (anterior, siguiente)
 
 
 @pytest.mark.django_db

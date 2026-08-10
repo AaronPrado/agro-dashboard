@@ -17,6 +17,8 @@ from django.db import transaction
 from farms.models import (
     AnalysisResult,
     Animal,
+    AnimalBatch,
+    AnimalBatchMembership,
     BatchRation,
     Crop,
     DailyYield,
@@ -31,7 +33,10 @@ from farms.models import (
     Silage,
 )
 from farms.services.canonical import (
+    AnimalBatchRecord,
     AnimalRegistration,
+    BatchMembershipRecord,
+    BatchRationRecord,
     CanonicalBatch,
     CropRecord,
     FarmRegistration,
@@ -72,6 +77,9 @@ class LoadSummary:
     raw_materials: int = 0
     rations: int = 0
     ration_ingredients: int = 0
+    batches: int = 0
+    memberships: int = 0
+    batch_rations: int = 0
 
     @property
     def loaded(self) -> int:
@@ -84,6 +92,9 @@ class LoadSummary:
             + self.raw_materials
             + self.rations
             + self.ration_ingredients
+            + self.batches
+            + self.memberships
+            + self.batch_rations
             + self.animals
             + self.daily_yields
             + self.milk_records
@@ -102,6 +113,9 @@ class LoadSummary:
         self.raw_materials += other.raw_materials
         self.rations += other.rations
         self.ration_ingredients += other.ration_ingredients
+        self.batches += other.batches
+        self.memberships += other.memberships
+        self.batch_rations += other.batch_rations
         return self
 
 
@@ -141,6 +155,9 @@ def load(batch: CanonicalBatch, *, reference: str = "") -> tuple[IngestionRun, L
     _load_rations(batch.rations, run, summary)
     _load_ration_ingredients(batch.ration_ingredients, run, summary)
     _load_animals(batch.animals, run, summary)
+    _load_batches(batch.batches, run, summary)
+    _load_memberships(batch.memberships, run, summary)
+    _load_batch_rations(batch.batch_rations, run, summary)
     _load_production(batch.production, run, summary)
     _load_quality(batch.quality, run, summary)
     _load_rejects(batch.rejects, run, summary)
@@ -325,6 +342,70 @@ def _load_animals(
         summary.animals += 1
 
 
+def _load_batches(
+    records: Iterable[AnimalBatchRecord], run: IngestionRun, summary: LoadSummary
+) -> None:
+    """Alta o actualización de lotes de animales por explotación y nombre."""
+    records = list(records)
+    if not records:
+        return
+    farms = _farm_ids({record.farm_code for record in records})
+    for record in records:
+        AnimalBatch.objects.update_or_create(
+            farm_id=farms[record.farm_code],
+            name=record.name,
+            defaults={"ingestion_run": run},
+        )
+        summary.batches += 1
+
+
+def _load_memberships(
+    records: Iterable[BatchMembershipRecord], run: IngestionRun, summary: LoadSummary
+) -> None:
+    """Escribe las pertenencias fechadas de cada animal a su lote.
+
+    La clave natural incluye la fecha de inicio: un animal pasa por el mismo lote
+    varias veces a lo largo de su vida, una por lactación. El no-solape no se
+    valida aquí —`update_or_create` no llama a `full_clean()`—, lo garantiza el
+    generador; lo único que sí impone la base es que no haya dos periodos
+    abiertos para el mismo animal.
+    """
+    records = list(records)
+    if not records:
+        return
+    animals = _animal_ids({(record.farm_code, record.ear_tag) for record in records})
+    batches = _batch_ids({(record.farm_code, record.batch_name) for record in records})
+    for record in records:
+        AnimalBatchMembership.objects.update_or_create(
+            animal_id=animals[(record.farm_code, record.ear_tag)],
+            batch_id=batches[(record.farm_code, record.batch_name)],
+            date_from=record.date_from,
+            defaults={"date_to": record.date_to, "ingestion_run": run},
+        )
+        summary.memberships += 1
+
+
+def _load_batch_rations(
+    records: Iterable[BatchRationRecord], run: IngestionRun, summary: LoadSummary
+) -> None:
+    """Escribe qué ración comió cada lote y durante cuánto tiempo."""
+    records = list(records)
+    if not records:
+        return
+    batches = _batch_ids({(record.farm_code, record.batch_name) for record in records})
+    rations = _ration_ids(
+        {(record.farm_code, record.ration_name, record.formulated_on) for record in records}
+    )
+    for record in records:
+        BatchRation.objects.update_or_create(
+            batch_id=batches[(record.farm_code, record.batch_name)],
+            ration_id=rations[(record.farm_code, record.ration_name, record.formulated_on)],
+            date_from=record.date_from,
+            defaults={"date_to": record.date_to, "ingestion_run": run},
+        )
+        summary.batch_rations += 1
+
+
 def _load_production(
     readings: Iterable[ProductionReading], run: IngestionRun, summary: LoadSummary
 ) -> None:
@@ -490,6 +571,17 @@ def _ration_ids(keys: set[tuple[str, str, date]]) -> dict[tuple[str, str, date],
     missing = keys - found.keys()
     if missing:
         raise IngestionError(f"raciones no registradas: {sorted(missing)}")
+    return found
+
+
+def _batch_ids(keys: set[tuple[str, str]]) -> dict[tuple[str, str], int]:
+    """Resuelve (código de explotación, nombre del lote) a clave primaria."""
+    names = {batch_name for _, batch_name in keys}
+    rows = AnimalBatch.objects.filter(name__in=names).values_list("farm__code", "name", "id")
+    found = {(farm_code, name): pk for farm_code, name, pk in rows}
+    missing = keys - found.keys()
+    if missing:
+        raise IngestionError(f"lotes no registrados: {sorted(missing)}")
     return found
 
 

@@ -119,8 +119,21 @@ class MilkRecordData:
 
 
 @dataclass(slots=True)
+class MembershipData:
+    """Pertenencia de un animal a un lote durante un intervalo cerrado.
+
+    Es mutable a propósito: los tramos se construyen alargando el último, que es
+    lo que garantiza que salgan consecutivos y sin solape.
+    """
+
+    batch_name: str
+    date_from: date
+    date_to: date | None
+
+
+@dataclass(slots=True)
 class AnimalData:
-    """Vaca con su serie de producción diaria y sus controles."""
+    """Vaca con su serie de producción diaria, sus controles y sus lotes."""
 
     ear_tag: str
     birth_date: date
@@ -130,6 +143,7 @@ class AnimalData:
     culled_date: date | None
     daily_yields: list[DailyYieldData]
     milk_records: list[MilkRecordData]
+    memberships: list[MembershipData]
 
 
 @dataclass(slots=True)
@@ -181,8 +195,19 @@ class RationData:
 
 
 @dataclass(slots=True)
+class BatchRationData:
+    """Ración que come un lote durante un intervalo."""
+
+    batch_name: str
+    ration_name: str
+    formulated_on: date
+    date_from: date
+    date_to: date | None
+
+
+@dataclass(slots=True)
 class FarmData:
-    """Granja con sus animales, su base territorial y sus raciones."""
+    """Granja con sus animales, su base territorial y su alimentación."""
 
     name: str
     code: str
@@ -191,6 +216,7 @@ class FarmData:
     animals: list[AnimalData]
     plots: list[PlotData]
     rations: list[RationData]
+    batch_rations: list[BatchRationData]
 
 
 @dataclass(slots=True)
@@ -217,6 +243,7 @@ def _make_farm(rng: random.Random, index: int, params: GenerationParams) -> Farm
         for n in range(params.animals_per_farm)
     ]
     plots = _make_plots(rng, params)
+    rations = _make_rations(params, plots)
     # El índice garantiza un código único aunque se repita el nombre.
     return FarmData(
         name=name,
@@ -225,7 +252,8 @@ def _make_farm(rng: random.Random, index: int, params: GenerationParams) -> Farm
         province=province,
         animals=animals,
         plots=plots,
-        rations=_make_rations(params, plots),
+        rations=rations,
+        batch_rations=_make_batch_rations(rations),
     )
 
 
@@ -333,6 +361,75 @@ def _rations_for_day(day: date, silage_codes: list[str]) -> list[RationData]:
     return rations
 
 
+def _make_batch_rations(rations: list[RationData]) -> list[BatchRationData]:
+    """Periodos de ración de cada lote: cada formulación rige hasta la siguiente.
+
+    Los cortes son las fechas de formulación, cada periodo termina el día antes
+    del siguiente y solo el último queda abierto. Es una partición del tiempo por
+    construcción, no por validación: el índice único parcial de la base tolera un
+    único periodo abierto por lote y no comprueba nada más.
+    """
+    periods: list[BatchRationData] = []
+    for group in FEEDING_GROUPS:
+        dates = sorted(
+            ration.formulated_on for ration in rations if ration.name == group.ration_name
+        )
+        for index, formulated_on in enumerate(dates):
+            is_last = index == len(dates) - 1
+            periods.append(
+                BatchRationData(
+                    batch_name=group.batch_name,
+                    ration_name=group.ration_name,
+                    formulated_on=formulated_on,
+                    date_from=formulated_on,
+                    date_to=None if is_last else dates[index + 1] - ONE_DAY,
+                )
+            )
+    return periods
+
+
+def _make_memberships(
+    calvings: list[tuple[date, int]], culled_date: date | None, params: GenerationParams
+) -> list[MembershipData]:
+    """Pertenencias del animal a sus lotes, como partición del tiempo.
+
+    Se recorre día a día y se alargan los tramos consecutivos que caen en el
+    mismo lote. Construirlo así, en vez de calcular las fechas de transición,
+    hace imposible que dos periodos se solapen: no hay aritmética de bordes que
+    equivocar. Importa porque ni `bulk_create` ni `update_or_create` llaman a
+    `full_clean()`, así que la comprobación de no-solape del modelo no protege a
+    la siembra — el generador es el único que puede garantizarlo.
+    """
+    last_day = min(params.end, culled_date) if culled_date is not None else params.end
+    runs: list[MembershipData] = []
+    day = params.start
+    while day <= last_day:
+        batch_name = _batch_for(calvings, day)
+        if batch_name is None:
+            day += ONE_DAY
+            continue
+        if runs and runs[-1].batch_name == batch_name and runs[-1].date_to == day - ONE_DAY:
+            runs[-1].date_to = day
+        else:
+            runs.append(MembershipData(batch_name=batch_name, date_from=day, date_to=day))
+        day += ONE_DAY
+    if runs and culled_date is None and runs[-1].date_to == params.end:
+        runs[-1].date_to = None  # sigue en el lote al cerrar la ventana
+    return runs
+
+
+def _batch_for(calvings: list[tuple[date, int]], day: date) -> str | None:
+    """Lote que corresponde al animal ese día, según sus días en leche."""
+    active = _active_calving(calvings, day)
+    if active is None:
+        return None  # novilla: todavía no entra en el manejo por lotes
+    dim = (day - active[0]).days + 1
+    for group in FEEDING_GROUPS:
+        if group.max_days_in_milk is None or dim <= group.max_days_in_milk:
+            return group.batch_name
+    return None
+
+
 def _make_animal(rng: random.Random, params: GenerationParams, ear_tag: str) -> AnimalData:
     """Construye una vaca: identidad, historial de partos y sus series."""
     breed = _choose_breed(rng)
@@ -352,6 +449,7 @@ def _make_animal(rng: random.Random, params: GenerationParams, ear_tag: str) -> 
         culled_date=culled_date,
         daily_yields=_daily_yields(rng, breed, calvings, culled_date, params),
         milk_records=_monthly_records(rng, breed, calvings, culled_date, params),
+        memberships=_make_memberships(calvings, culled_date, params),
     )
 
 

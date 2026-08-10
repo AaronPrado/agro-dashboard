@@ -18,7 +18,7 @@ from farms.services.adapters.field_notebook import (
     SPECIES_CODES,
 )
 from farms.services.adapters.milk_recording import BREED_CODES, SCC_THOUSANDS
-from farms.services.agronomy import RAW_MATERIALS
+from farms.services.agronomy import FEEDING_GROUPS, RAW_MATERIALS
 from farms.services.generation import AnimalData, FarmData, MilkRecordData
 
 MILKING_ROBOT_HEADER = "crotal;fecha;hora;kg"
@@ -223,6 +223,36 @@ def field_notebook_feed(farm: FarmData) -> str:
                     _comma_2dp(ingredient.dry_matter_kg),
                 )
             )
+
+    lines += _notebook_section("[LOTES]")
+    for group in FEEDING_GROUPS:
+        lines.append(group.batch_name)
+
+    lines += _notebook_section("[PERTENENCIAS]")
+    for animal in farm.animals:
+        for membership in animal.memberships:
+            lines.append(
+                _notebook_row(
+                    # El cuaderno se teclea a mano y no respeta las mayúsculas del
+                    # crotal oficial: normalizarlo es trabajo del adaptador.
+                    animal.ear_tag.lower(),
+                    membership.batch_name,
+                    _short_year(membership.date_from),
+                    _short_year(membership.date_to),
+                )
+            )
+
+    lines += _notebook_section("[RACIONES_LOTE]")
+    for period in farm.batch_rations:
+        lines.append(
+            _notebook_row(
+                period.batch_name,
+                period.ration_name,
+                _short_year(period.formulated_on),
+                _short_year(period.date_from),
+                _short_year(period.date_to),
+            )
+        )
     return "\n".join(lines)
 
 

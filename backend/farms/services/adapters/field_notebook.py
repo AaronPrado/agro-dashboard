@@ -15,10 +15,14 @@ from typing import ClassVar
 from farms.models import Crop, RawMaterial, SourceSystem
 from farms.services.adapters.base import (
     AdapterError,
+    normalize_ear_tag,
     parse_decimal,
     parse_short_year_date,
 )
 from farms.services.canonical import (
+    AnimalBatchRecord,
+    BatchMembershipRecord,
+    BatchRationRecord,
     CanonicalBatch,
     CropRecord,
     PlotRecord,
@@ -41,6 +45,9 @@ SECTION_SILAGES = "[SILOS]"
 SECTION_RAW_MATERIALS = "[MATERIAS_PRIMAS]"
 SECTION_RATIONS = "[RACIONES]"
 SECTION_INGREDIENTS = "[INGREDIENTES]"
+SECTION_BATCHES = "[LOTES]"
+SECTION_MEMBERSHIPS = "[PERTENENCIAS]"
+SECTION_BATCH_RATIONS = "[RACIONES_LOTE]"
 
 # Encabezados de cada sección: el contrato con la fuente, en un solo sitio, para
 # que el emisor del mock y este adaptador no puedan divergir sin que se note.
@@ -51,6 +58,9 @@ COLUMNS = {
     SECTION_RAW_MATERIALS: ("nombre", "categoria"),
     SECTION_RATIONS: ("nombre", "formulacion"),
     SECTION_INGREDIENTS: ("racion", "formulacion", "tipo", "referencia", "kg_ms"),
+    SECTION_BATCHES: ("nombre",),
+    SECTION_MEMBERSHIPS: ("crotal", "lote", "desde", "hasta"),
+    SECTION_BATCH_RATIONS: ("lote", "racion", "formulacion", "desde", "hasta"),
 }
 
 # Códigos de especie del cuaderno traducidos al vocabulario del modelo.
@@ -89,6 +99,9 @@ class FieldNotebookAdapter:
             SECTION_RAW_MATERIALS: self._parse_raw_material,
             SECTION_RATIONS: self._parse_ration,
             SECTION_INGREDIENTS: self._parse_ingredient,
+            SECTION_BATCHES: self._parse_batch,
+            SECTION_MEMBERSHIPS: self._parse_membership,
+            SECTION_BATCH_RATIONS: self._parse_batch_ration,
         }
 
     def parse(self, payload: str) -> CanonicalBatch:
@@ -220,6 +233,37 @@ class FieldNotebookAdapter:
                 silage_code=reference if kind == INGREDIENT_SILAGE else None,
                 raw_material_name=reference if kind == INGREDIENT_RAW_MATERIAL else None,
                 dry_matter_kg=parse_decimal(kg, decimal_separator=","),
+            )
+        )
+
+    def _parse_batch(self, fields: list[str], farm_code: str, batch: CanonicalBatch) -> None:
+        (name,) = fields
+        batch.batches.append(AnimalBatchRecord(farm_code=farm_code, name=name))
+
+    def _parse_membership(self, fields: list[str], farm_code: str, batch: CanonicalBatch) -> None:
+        """Pertenencia fechada. El cuaderno escribe el crotal a su manera."""
+        ear_tag, batch_name, date_from, date_to = fields
+        batch.memberships.append(
+            BatchMembershipRecord(
+                farm_code=farm_code,
+                ear_tag=normalize_ear_tag(ear_tag),
+                batch_name=batch_name,
+                date_from=parse_short_year_date(date_from),
+                date_to=_optional_date(date_to),
+            )
+        )
+
+    def _parse_batch_ration(self, fields: list[str], farm_code: str, batch: CanonicalBatch) -> None:
+        """Qué comió un lote y desde cuándo, con la ración identificada entera."""
+        batch_name, ration_name, formulated_on, date_from, date_to = fields
+        batch.batch_rations.append(
+            BatchRationRecord(
+                farm_code=farm_code,
+                batch_name=batch_name,
+                ration_name=ration_name,
+                formulated_on=parse_short_year_date(formulated_on),
+                date_from=parse_short_year_date(date_from),
+                date_to=_optional_date(date_to),
             )
         )
 
