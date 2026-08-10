@@ -10,7 +10,17 @@ import datetime
 import pytest
 from django.core.management import call_command
 
-from farms.models import Animal, DailyYield, Farm, IngestionRun, MilkRecord, SourceSystem
+from farms.models import (
+    Animal,
+    Crop,
+    DailyYield,
+    Farm,
+    IngestionRun,
+    MilkRecord,
+    Plot,
+    Silage,
+    SourceSystem,
+)
 
 START = datetime.date(2026, 1, 1)
 END = datetime.date(2026, 3, 31)
@@ -52,7 +62,37 @@ def test_el_dato_entra_por_mas_de_una_fuente():
     _seed()
 
     fuentes = set(IngestionRun.objects.values_list("source", flat=True))
-    assert fuentes == {SourceSystem.MILKING_ROBOT, SourceSystem.MILK_RECORDING}
+    assert fuentes == {
+        SourceSystem.MILKING_ROBOT,
+        SourceSystem.MILK_RECORDING,
+        SourceSystem.FIELD_NOTEBOOK,
+    }
+
+
+@pytest.mark.django_db
+def test_la_cadena_agricola_queda_sembrada_y_encadenada():
+    """Parcela → campaña → silo, cada eslabón colgando del anterior."""
+    _seed()
+
+    assert Plot.objects.exists()
+    assert Crop.objects.exists()
+    assert Silage.objects.exists()
+    for silage in Silage.objects.select_related("crop__plot__farm"):
+        assert silage.crop.plot.farm.code is not None
+        assert silage.sealed_date >= silage.crop.harvest_date
+        assert silage.opened_date > silage.sealed_date
+
+
+@pytest.mark.django_db
+def test_hay_silo_disponible_antes_de_que_empiece_la_ventana():
+    """El silo que se come en enero se cosechó el otoño anterior.
+
+    Sin campañas del año previo, la cadena empezaría vacía justo en el tramo que
+    la pantalla del hilo tiene que enseñar.
+    """
+    _seed()
+
+    assert Silage.objects.filter(opened_date__lt=START).exists()
 
 
 @pytest.mark.django_db

@@ -15,6 +15,14 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from django.utils.text import slugify
 
+from farms.services.agronomy import (
+    PLOT_NAMES,
+    PLOTS_PER_FARM,
+    ROTATION_SHARE,
+    crop_dates,
+    plot_area_ha,
+    silage_dates,
+)
 from farms.services.dairy import (
     BREED_COMPOSITION,
     BREED_YIELD_FACTOR,
@@ -121,6 +129,36 @@ class AnimalData:
 
 
 @dataclass(slots=True)
+class SilageData:
+    """Silo conservado de una campaña, con sus fechas de cierre y apertura."""
+
+    code: str
+    sealed_date: date
+    opened_date: date
+
+
+@dataclass(slots=True)
+class CropData:
+    """Campaña de cultivo sobre una parcela y lo que se ensiló de ella."""
+
+    species: str
+    season: int
+    sowing_date: date | None
+    harvest_date: date
+    silages: list[SilageData]
+
+
+@dataclass(slots=True)
+class PlotData:
+    """Parcela de la explotación con sus campañas."""
+
+    code: str
+    name: str
+    area_ha: Decimal
+    crops: list[CropData]
+
+
+@dataclass(slots=True)
 class FarmData:
     """Granja con sus animales."""
 
@@ -129,6 +167,7 @@ class FarmData:
     municipality: str
     province: str
     animals: list[AnimalData]
+    plots: list[PlotData]
 
 
 @dataclass(slots=True)
@@ -147,7 +186,7 @@ def generate(rng: random.Random, params: GenerationParams) -> list[FarmData]:
 
 
 def _make_farm(rng: random.Random, index: int, params: GenerationParams) -> FarmData:
-    """Genera una granja con su plantilla de animales."""
+    """Genera una granja con su plantilla de animales y su base territorial."""
     name = rng.choice(FARM_NAMES)
     municipality, province = rng.choice(GALICIAN_PLACES)
     animals = [
@@ -161,6 +200,60 @@ def _make_farm(rng: random.Random, index: int, params: GenerationParams) -> Farm
         municipality=municipality,
         province=province,
         animals=animals,
+        plots=_make_plots(rng, params),
+    )
+
+
+def _make_plots(rng: random.Random, params: GenerationParams) -> list[PlotData]:
+    """Base territorial de la explotación: parcelas con sus campañas."""
+    names = rng.sample(PLOT_NAMES, k=rng.randint(*PLOTS_PER_FARM))
+    return [
+        PlotData(
+            code=f"P-{number:02d}",
+            name=plot_name,
+            area_ha=plot_area_ha(rng),
+            crops=_make_crops(rng, number, params, rotated=rng.random() < ROTATION_SHARE),
+        )
+        for number, plot_name in enumerate(names, start=1)
+    ]
+
+
+def _make_crops(
+    rng: random.Random, plot_number: int, params: GenerationParams, *, rotated: bool
+) -> list[CropData]:
+    """Campañas de una parcela: la rotación de verano e invierno, o la pradera.
+
+    Se generan también las campañas del año anterior a la ventana, porque el silo
+    que come el rebaño en enero se cosechó el otoño de antes.
+    """
+    species = ("maize", "italian_ryegrass") if rotated else ("grass_mix",)
+    crops: list[CropData] = []
+    for season in range(params.start.year - 1, params.end.year + 1):
+        for name in species:
+            sowing_date, harvest_date = crop_dates(rng, name, season)
+            if harvest_date > params.end:
+                continue  # todavía no se ha cosechado dentro de la ventana
+            crops.append(
+                CropData(
+                    species=name,
+                    season=season,
+                    sowing_date=sowing_date,
+                    harvest_date=harvest_date,
+                    silages=[_make_silage(rng, plot_number, name, season, harvest_date)],
+                )
+            )
+    return crops
+
+
+def _make_silage(
+    rng: random.Random, plot_number: int, species: str, season: int, harvest_date: date
+) -> SilageData:
+    """Silo de una campaña: se cierra tras cosechar y se abre tras fermentar."""
+    sealed_date, opened_date = silage_dates(rng, harvest_date)
+    return SilageData(
+        code=f"S-{season}-P{plot_number:02d}-{species[0].upper()}",
+        sealed_date=sealed_date,
+        opened_date=opened_date,
     )
 
 
@@ -291,8 +384,12 @@ def _monthly_records(
     for control_day in _monthly_dates(params.start, params.end):
         if culled_date is not None and control_day > culled_date:
             break
-        if _active_calving(calvings, control_day) is None:
-            continue  # sin lactación activa no hay control
+        active = _active_calving(calvings, control_day)
+        if active is None:
+            continue  # novilla que todavía no ha parido
+        calving_date, _ = active
+        if wood_yield_kg((control_day - calving_date).days + 1) == 0.0:
+            continue  # vaca seca: no hay leche que muestrear
         scc: int | None = int(rng.lognormvariate(SCC_LOGNORM_MU, SCC_LOGNORM_SIGMA))
         if rng.random() < NULL_RATE * 5:
             scc = None  # a veces el control no trae recuento

@@ -30,6 +30,7 @@ select = ["E", "F", "I", "UP", "B", "C4", "SIM", "DJ", "S"]
 "tests/**" = ["S101", "S311"]
 "farms/services/generation.py" = ["S311"]
 "farms/services/feeds.py" = ["S311"]
+"farms/services/agronomy.py" = ["S311"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings.local"

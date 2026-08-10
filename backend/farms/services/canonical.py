@@ -73,6 +73,41 @@ class Reject:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class PlotRecord:
+    """Parcela de cultivo tal como la declara quien lleva el cuaderno."""
+
+    farm_code: str
+    code: str
+    name: str
+    area_ha: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class CropRecord:
+    """Campaña sobre una parcela. La identifican parcela, año y especie."""
+
+    farm_code: str
+    plot_code: str
+    species: str
+    season: int
+    sowing_date: date | None
+    harvest_date: date | None
+
+
+@dataclass(frozen=True, slots=True)
+class SilageRecord:
+    """Silo conservado. Cuelga de una campaña, que hay que identificar entera."""
+
+    farm_code: str
+    plot_code: str
+    season: int
+    species: str
+    code: str
+    sealed_date: date | None
+    opened_date: date | None
+
+
 @dataclass(slots=True)
 class CanonicalBatch:
     """Lo que entrega un adaptador tras normalizar una entrega de su fuente.
@@ -87,4 +122,7 @@ class CanonicalBatch:
     animals: list[AnimalRegistration] = field(default_factory=list)
     production: list[ProductionReading] = field(default_factory=list)
     quality: list[MilkQualityRecord] = field(default_factory=list)
+    plots: list[PlotRecord] = field(default_factory=list)
+    crops: list[CropRecord] = field(default_factory=list)
+    silages: list[SilageRecord] = field(default_factory=list)
     rejects: list[Reject] = field(default_factory=list)

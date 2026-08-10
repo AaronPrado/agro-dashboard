@@ -15,19 +15,25 @@ from django.db import transaction
 
 from farms.models import (
     Animal,
+    Crop,
     DailyYield,
     Farm,
     IngestionReject,
     IngestionRun,
     MilkRecord,
+    Plot,
+    Silage,
 )
 from farms.services.canonical import (
     AnimalRegistration,
     CanonicalBatch,
+    CropRecord,
     FarmRegistration,
     MilkQualityRecord,
+    PlotRecord,
     ProductionReading,
     Reject,
+    SilageRecord,
 )
 
 BATCH_SIZE = 1000
@@ -51,11 +57,22 @@ class LoadSummary:
     daily_yields: int = 0
     milk_records: int = 0
     rejected: int = 0
+    plots: int = 0
+    crops: int = 0
+    silages: int = 0
 
     @property
     def loaded(self) -> int:
         """Filas efectivamente escritas, sin contar las rechazadas."""
-        return self.farms + self.animals + self.daily_yields + self.milk_records
+        return (
+            self.farms
+            + self.plots
+            + self.crops
+            + self.silages
+            + self.animals
+            + self.daily_yields
+            + self.milk_records
+        )
 
     def __iadd__(self, other: Self) -> Self:
         """Acumula el resultado de varias entregas en un solo resumen."""
@@ -64,6 +81,9 @@ class LoadSummary:
         self.daily_yields += other.daily_yields
         self.milk_records += other.milk_records
         self.rejected += other.rejected
+        self.plots += other.plots
+        self.crops += other.crops
+        self.silages += other.silages
         return self
 
 
@@ -89,6 +109,9 @@ def load(batch: CanonicalBatch, *, reference: str = "") -> tuple[IngestionRun, L
     summary = LoadSummary()
 
     _load_farms(batch.farms, run, summary)
+    _load_plots(batch.plots, run, summary)
+    _load_crops(batch.crops, run, summary)
+    _load_silages(batch.silages, run, summary)
     _load_animals(batch.animals, run, summary)
     _load_production(batch.production, run, summary)
     _load_quality(batch.quality, run, summary)
@@ -115,6 +138,64 @@ def _load_farms(
             },
         )
         summary.farms += 1
+
+
+def _load_plots(records: Iterable[PlotRecord], run: IngestionRun, summary: LoadSummary) -> None:
+    """Alta o actualización de parcelas, resueltas contra su explotación."""
+    records = list(records)
+    if not records:
+        return
+    farms = _farm_ids({record.farm_code for record in records})
+    for record in records:
+        Plot.objects.update_or_create(
+            farm_id=farms[record.farm_code],
+            code=record.code,
+            defaults={
+                "name": record.name,
+                "area_ha": record.area_ha,
+                "ingestion_run": run,
+            },
+        )
+        summary.plots += 1
+
+
+def _load_crops(records: Iterable[CropRecord], run: IngestionRun, summary: LoadSummary) -> None:
+    """Alta o actualización de campañas: parcela, año y especie las identifican."""
+    records = list(records)
+    if not records:
+        return
+    plots = _plot_ids({(record.farm_code, record.plot_code) for record in records})
+    for record in records:
+        Crop.objects.update_or_create(
+            plot_id=plots[(record.farm_code, record.plot_code)],
+            season=record.season,
+            species=record.species,
+            defaults={
+                "sowing_date": record.sowing_date,
+                "harvest_date": record.harvest_date,
+                "ingestion_run": run,
+            },
+        )
+        summary.crops += 1
+
+
+def _load_silages(records: Iterable[SilageRecord], run: IngestionRun, summary: LoadSummary) -> None:
+    """Alta o actualización de silos, colgados de la campaña que los produjo."""
+    records = list(records)
+    if not records:
+        return
+    crops = _crop_ids({(r.farm_code, r.plot_code, r.season, r.species) for r in records})
+    for record in records:
+        Silage.objects.update_or_create(
+            crop_id=crops[(record.farm_code, record.plot_code, record.season, record.species)],
+            code=record.code,
+            defaults={
+                "sealed_date": record.sealed_date,
+                "opened_date": record.opened_date,
+                "ingestion_run": run,
+            },
+        )
+        summary.silages += 1
 
 
 def _load_animals(
@@ -239,4 +320,36 @@ def _animal_ids(keys: set[tuple[str, str]]) -> dict[tuple[str, str], int]:
     missing = keys - found.keys()
     if missing:
         raise IngestionError(f"animales no registrados: {sorted(missing)[:5]}")
+    return found
+
+
+def _plot_ids(keys: set[tuple[str, str]]) -> dict[tuple[str, str], int]:
+    """Resuelve (código de explotación, código de parcela) a clave primaria.
+
+    El código de parcela es único por explotación, no globalmente: dos ganaderos
+    pueden llamar `P-01` a parcelas distintas.
+    """
+    codes = {plot_code for _, plot_code in keys}
+    rows = Plot.objects.filter(code__in=codes).values_list("farm__code", "code", "id")
+    found = {(farm_code, plot_code): pk for farm_code, plot_code, pk in rows}
+    missing = keys - found.keys()
+    if missing:
+        raise IngestionError(f"parcelas no registradas: {sorted(missing)}")
+    return found
+
+
+def _crop_ids(keys: set[tuple[str, str, int, str]]) -> dict[tuple[str, str, int, str], int]:
+    """Resuelve una campaña por explotación, parcela, año y especie.
+
+    Las cuatro señas hacen falta: la misma parcela lleva dos especies el mismo
+    año, que es exactamente lo que hace la rotación de verano e invierno.
+    """
+    seasons = {season for _, _, season, _ in keys}
+    rows = Crop.objects.filter(season__in=seasons).values_list(
+        "plot__farm__code", "plot__code", "season", "species", "id"
+    )
+    found = {(farm, plot, season, species): pk for farm, plot, season, species, pk in rows}
+    missing = keys - found.keys()
+    if missing:
+        raise IngestionError(f"campañas no registradas: {sorted(missing)}")
     return found

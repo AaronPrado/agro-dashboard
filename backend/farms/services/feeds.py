@@ -10,6 +10,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from farms.services.adapters.base import EAR_TAG_COUNTRY_CODE
+from farms.services.adapters.field_notebook import COLUMNS, SPECIES_CODES
 from farms.services.adapters.milk_recording import BREED_CODES, SCC_THOUSANDS
 from farms.services.generation import AnimalData, FarmData, MilkRecordData
 
@@ -138,3 +139,68 @@ def _compact(day: date | None) -> str:
 def _thousands(count: int | None) -> str:
     """Miles de células por mililitro; el centinela ocupa el mismo ancho."""
     return SCC_MISSING if count is None else f"{count // SCC_THOUSANDS:07d}"
+
+
+FIELD_NOTEBOOK_TITLE = "CUADERNO DE CAMPO"
+NOTEBOOK_SEPARATOR = "\t"
+NOTEBOOK_MISSING = "-"
+
+# La inversa del mapeo del adaptador, por el mismo motivo que en las razas: el
+# código de cada especie se declara una sola vez.
+SPECIES_TO_CODE = {species: code for code, species in SPECIES_CODES.items()}
+
+
+def field_notebook_feed(farm: FarmData) -> str:
+    """Exportación plana del cuaderno de campo de una explotación.
+
+    Tres secciones con sus encabezados, filas separadas por tabulador, coma
+    decimal y fechas con el año en dos cifras, que es como quedan al exportar
+    una hoja de cálculo llevada a mano.
+    """
+    lines = [
+        FIELD_NOTEBOOK_TITLE,
+        f"EXPLOTACION{NOTEBOOK_SEPARATOR}{farm.code}",
+        "--",
+        "[PARCELAS]",
+        NOTEBOOK_SEPARATOR.join(COLUMNS["[PARCELAS]"]),
+    ]
+    for plot in farm.plots:
+        lines.append(_notebook_row(plot.code, plot.name, f"{plot.area_ha:.2f}".replace(".", ",")))
+
+    lines += ["[CULTIVOS]", NOTEBOOK_SEPARATOR.join(COLUMNS["[CULTIVOS]"])]
+    for plot in farm.plots:
+        for crop in plot.crops:
+            lines.append(
+                _notebook_row(
+                    plot.code,
+                    SPECIES_TO_CODE[crop.species],
+                    str(crop.season),
+                    _short_year(crop.sowing_date),
+                    _short_year(crop.harvest_date),
+                )
+            )
+
+    lines += ["[SILOS]", NOTEBOOK_SEPARATOR.join(COLUMNS["[SILOS]"])]
+    for plot in farm.plots:
+        for crop in plot.crops:
+            for silage in crop.silages:
+                lines.append(
+                    _notebook_row(
+                        plot.code,
+                        str(crop.season),
+                        SPECIES_TO_CODE[crop.species],
+                        silage.code,
+                        _short_year(silage.sealed_date),
+                        _short_year(silage.opened_date),
+                    )
+                )
+    return "\n".join(lines)
+
+
+def _notebook_row(*values: str) -> str:
+    return NOTEBOOK_SEPARATOR.join(values)
+
+
+def _short_year(day: date | None) -> str:
+    """Fecha del cuaderno: dos cifras de año, y la marca de lo que no aplica."""
+    return NOTEBOOK_MISSING if day is None else f"{day:%d-%m-%y}"

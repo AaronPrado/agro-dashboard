@@ -71,3 +71,14 @@ def parse_decimal(raw: str, *, decimal_separator: str = ".") -> Decimal:
 def parse_compact_date(raw: str) -> date:
     """Fecha en `AAAAMMDD`, sin separadores."""
     return datetime.strptime(raw.strip(), "%Y%m%d").date()
+
+
+def parse_short_year_date(raw: str, separator: str = "-") -> date:
+    """Fecha en `DD-MM-AA`, con el año en dos cifras.
+
+    El siglo lo resuelve `%y` con la convención POSIX que implementa Python: de
+    00 a 68 se leen como 2000-2068 y de 69 a 99 como 1969-1999. Es una
+    ambigüedad real del formato, no una decisión de este proyecto; se documenta
+    aquí y se acepta, porque inventar otra regla no la haría menos ambigua.
+    """
+    return datetime.strptime(raw.strip(), f"%d{separator}%m{separator}%y").date()
