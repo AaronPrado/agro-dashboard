@@ -3,9 +3,10 @@
 from django.db import models
 
 from farms.models.farm import Farm
+from farms.models.ingestion import Sourced
 
 
-class Plot(models.Model):
+class Plot(Sourced):
     """Parcela de cultivo de una explotación."""
 
     farm = models.ForeignKey(
@@ -37,7 +38,7 @@ class Plot(models.Model):
         return f"{self.name} ({self.area_ha} ha)"
 
 
-class Crop(models.Model):
+class Crop(Sourced):
     """Campaña de cultivo sobre una parcela: qué se sembró y cuándo se recogió."""
 
     class Species(models.TextChoices):
@@ -80,7 +81,7 @@ class Crop(models.Model):
         return f"{self.get_species_display()} · {self.plot.name} · {self.season}"
 
 
-class Silage(models.Model):
+class Silage(Sourced):
     """Silo de forraje conservado, procedente de una campaña de cultivo."""
 
     crop = models.ForeignKey(
@@ -114,7 +115,7 @@ class Silage(models.Model):
         return f"{self.code} · {self.crop.get_species_display()} {self.crop.season}"
 
 
-class NIRAnalysis(models.Model):
+class NIRAnalysis(Sourced):
     """Análisis NIR de un ensilado: la cabecera de la muestra.
 
     Los valores no son columnas de este modelo: cuelgan como resultados por

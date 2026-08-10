@@ -169,10 +169,11 @@ def test_nir_no_almacena_los_valores_como_columnas(silage):
 
     Fija la decisión de diseño: el mismo par muestra/resultado sirve para el
     forraje y para la leche, y el esquema no cambia al añadir un parámetro nuevo.
+    La cabecera solo identifica la muestra y de dónde vino.
     """
     campos = {field.name for field in NIRAnalysis._meta.fields}
 
-    assert campos == {"id", "silage", "date", "laboratory"}
+    assert campos == {"id", "silage", "date", "laboratory", "ingestion_run"}
 
 
 @pytest.mark.django_db

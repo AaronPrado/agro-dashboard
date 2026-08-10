@@ -6,6 +6,7 @@ from django.db import models
 from farms.models.agronomy import RawMaterial, Silage
 from farms.models.dairy import Animal
 from farms.models.farm import Farm
+from farms.models.ingestion import Sourced
 
 
 class DatedPeriod(models.Model):
@@ -44,7 +45,7 @@ class DatedPeriod(models.Model):
             raise ValidationError("El periodo se solapa con otro ya registrado.")
 
 
-class AnimalBatch(models.Model):
+class AnimalBatch(Sourced):
     """Lote de animales: la unidad a la que se asigna una ración."""
 
     farm = models.ForeignKey(
@@ -70,7 +71,7 @@ class AnimalBatch(models.Model):
         return self.name
 
 
-class AnimalBatchMembership(DatedPeriod):
+class AnimalBatchMembership(DatedPeriod, Sourced):
     """Pertenencia de un animal a un lote durante un periodo."""
 
     animal = models.ForeignKey(
@@ -114,7 +115,7 @@ class AnimalBatchMembership(DatedPeriod):
         return {"animal_id": self.animal_id}
 
 
-class Ration(models.Model):
+class Ration(Sourced):
     """Ración formulada para una explotación.
 
     Una ración es una formulación cerrada: reformularla es crear otra, no editar
@@ -146,7 +147,7 @@ class Ration(models.Model):
         return f"{self.name} ({self.formulated_on})"
 
 
-class RationIngredient(models.Model):
+class RationIngredient(Sourced):
     """Un componente de una ración, con su aporte en materia seca.
 
     El componente es un ensilado propio o una materia prima comprada, nunca las
@@ -215,7 +216,7 @@ class RationIngredient(models.Model):
             raise ValidationError("El ensilado pertenece a otra explotación.")
 
 
-class BatchRation(DatedPeriod):
+class BatchRation(DatedPeriod, Sourced):
     """Ración que come un lote durante un periodo."""
 
     batch = models.ForeignKey(

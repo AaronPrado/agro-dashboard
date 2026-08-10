@@ -2,8 +2,10 @@
 
 from django.db import models
 
+from farms.models.ingestion import Sourced
 
-class Farm(models.Model):
+
+class Farm(Sourced):
     """Explotación ganadera. Raíz de la jerarquía del dominio."""
 
     name = models.CharField("nombre", max_length=120)

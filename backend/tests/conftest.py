@@ -17,10 +17,12 @@ from farms.models import (
     BatchMilkSample,
     Crop,
     Farm,
+    IngestionRun,
     NIRAnalysis,
     Plot,
     Ration,
     Silage,
+    SourceSystem,
 )
 
 
@@ -32,6 +34,15 @@ def api_client():
     un consumidor real de la API y facilita enviar cuerpos en JSON.
     """
     return APIClient()
+
+
+@pytest.fixture
+def ingestion_run(db):
+    """Carga de datos a la que colgar filas con procedencia."""
+    return IngestionRun.objects.create(
+        source=SourceSystem.MILKING_ROBOT,
+        reference="export-2026-02-10.csv",
+    )
 
 
 @pytest.fixture
