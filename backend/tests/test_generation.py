@@ -55,15 +55,19 @@ def test_distribucion_de_razas_sesgada_a_frisona(poblacion):
     assert breeds.count("holstein") > len(breeds) / 2
 
 
-def test_litros_dentro_de_los_limites_del_modelo(poblacion):
-    """Ningún registro viola el DecimalField(max_digits=5, decimal_places=2)."""
+def test_kilos_dentro_de_los_limites_del_modelo(poblacion):
+    """El generador emite kilos, la unidad que mide la báscula del ordeño.
+
+    El tope es deliberadamente conservador: tras convertir a litros en el
+    adaptador sigue cabiendo en el DecimalField(max_digits=5, decimal_places=2).
+    """
     farms, _ = poblacion
     for farm in farms:
         for animal in farm.animals:
             for daily_yield in animal.daily_yields:
-                if daily_yield.liters is not None:
-                    assert Decimal("0") <= daily_yield.liters <= Decimal("999.99")
-                    assert daily_yield.liters.as_tuple().exponent == -2
+                if daily_yield.kg is not None:
+                    assert Decimal("0") <= daily_yield.kg <= Decimal("999.99")
+                    assert daily_yield.kg.as_tuple().exponent == -2
 
 
 def test_analitica_dentro_de_los_limites_del_modelo(poblacion):
@@ -96,7 +100,7 @@ def test_incluye_casos_borde(poblacion):
     farms, _ = poblacion
     daily_yields = [m for farm in farms for animal in farm.animals for m in animal.daily_yields]
 
-    assert any(m.liters is None for m in daily_yields)
+    assert any(m.kg is None for m in daily_yields)
     assert any(a.culled_date is not None for farm in farms for a in farm.animals)
 
 
@@ -110,13 +114,13 @@ def test_produccion_sigue_la_curva_de_lactacion(poblacion):
             if animal.last_calving_date is None:
                 continue
             for daily_yield in animal.daily_yields:
-                if daily_yield.liters is None:
+                if daily_yield.kg is None:
                     continue
                 dim = (daily_yield.date - animal.last_calving_date).days
                 if 30 <= dim <= 120:
-                    inicio.append(daily_yield.liters)
+                    inicio.append(daily_yield.kg)
                 elif 250 <= dim <= 305:
-                    final.append(daily_yield.liters)
+                    final.append(daily_yield.kg)
 
     assert inicio and final
     assert sum(inicio) / len(inicio) > sum(final) / len(final)

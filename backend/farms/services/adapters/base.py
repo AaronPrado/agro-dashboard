@@ -22,21 +22,6 @@ class AdapterError(Exception):
     """Fallo al interpretar una entrega de una fuente."""
 
 
-class MalformedRecord(AdapterError):
-    """Un registro concreto no se puede interpretar.
-
-    Lleva la línea y su contenido porque un error de ingesta sin la fila que lo
-    provocó es inservible para quien tiene que corregir el fichero de origen.
-    """
-
-    def __init__(self, source: SourceSystem, line_number: int, raw: str, reason: str) -> None:
-        super().__init__(f"[{source}] línea {line_number}: {reason} — {raw!r}")
-        self.source = source
-        self.line_number = line_number
-        self.raw = raw
-        self.reason = reason
-
-
 class SourceAdapter(Protocol):
     """Lo que cumple todo adaptador: una fuente declarada y un `parse`."""
 

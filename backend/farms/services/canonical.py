@@ -16,6 +16,16 @@ from farms.models import SourceSystem
 
 
 @dataclass(frozen=True, slots=True)
+class FarmRegistration:
+    """Explotación tal como la declara la fuente que la conoce."""
+
+    code: str
+    name: str
+    municipality: str
+    province: str
+
+
+@dataclass(frozen=True, slots=True)
 class AnimalRegistration:
     """Alta o estado de un animal según la fuente que lo declara."""
 
@@ -50,6 +60,19 @@ class MilkQualityRecord:
     somatic_cell_count: int | None
 
 
+@dataclass(frozen=True, slots=True)
+class Reject:
+    """Registro que la fuente entregó y el adaptador no supo interpretar.
+
+    Se conserva el contenido original: un motivo sin la fila no sirve para
+    corregir el fichero de origen.
+    """
+
+    line_number: int
+    raw: str
+    reason: str
+
+
 @dataclass(slots=True)
 class CanonicalBatch:
     """Lo que entrega un adaptador tras normalizar una entrega de su fuente.
@@ -60,6 +83,8 @@ class CanonicalBatch:
     """
 
     source: SourceSystem
+    farms: list[FarmRegistration] = field(default_factory=list)
     animals: list[AnimalRegistration] = field(default_factory=list)
     production: list[ProductionReading] = field(default_factory=list)
     quality: list[MilkQualityRecord] = field(default_factory=list)
+    rejects: list[Reject] = field(default_factory=list)

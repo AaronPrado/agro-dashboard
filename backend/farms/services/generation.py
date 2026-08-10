@@ -11,7 +11,7 @@ import math
 import random
 from dataclasses import dataclass
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.utils.text import slugify
 
@@ -20,7 +20,6 @@ from farms.services.dairy import (
     BREED_YIELD_FACTOR,
     parity_factor,
     seasonal_factor,
-    to_liters,
     wood_yield_kg,
 )
 
@@ -56,7 +55,7 @@ OUTLIER_RATE = 0.005  # lectura anómala puntual (fallo de sensor)
 OUTLIER_MULTIPLIERS = (0.2, 2.5)
 CULL_RATE = 0.10  # fracción de animales que causan baja dentro de la ventana
 
-MAX_LITERS = Decimal("999.99")  # tope del DecimalField(max_digits=5, decimal_places=2)
+MAX_KG = Decimal("999.99")  # tope defensivo; convertido a litros sigue cabiendo en el modelo
 MAX_PCT = Decimal("99.99")  # tope del DecimalField(max_digits=4, decimal_places=2)
 
 # Nombres de granjas mockeados
@@ -82,10 +81,10 @@ GALICIAN_PLACES = (
 
 @dataclass(slots=True)
 class DailyYieldData:
-    """Producción de un animal en un día concreto."""
+    """Producción de un animal en un día, en kilos, tal como la mide el ordeño."""
 
     date: date
-    liters: Decimal | None
+    kg: Decimal | None
 
 
 @dataclass(slots=True)
@@ -258,14 +257,14 @@ def _daily_yields(
             day += ONE_DAY
             continue
         if rng.random() < NULL_RATE:
-            records.append(DailyYieldData(date=day, liters=None))  # registrado sin lectura
+            records.append(DailyYieldData(date=day, kg=None))  # registrado sin lectura
             day += ONE_DAY
             continue
         factor = yield_factor * parity_factor(parity) * seasonal_factor(day)
         kg = base_kg * factor * max(0.0, rng.gauss(1.0, DAILY_NOISE_SIGMA))
         if rng.random() < OUTLIER_RATE:
             kg *= rng.choice(OUTLIER_MULTIPLIERS)
-        records.append(DailyYieldData(date=day, liters=min(to_liters(kg), MAX_LITERS)))
+        records.append(DailyYieldData(date=day, kg=_quantize_kg(kg)))
         day += ONE_DAY
     return records
 
@@ -315,5 +314,11 @@ def _monthly_dates(start: date, end: date):
 
 def _quantize_pct(value: float) -> Decimal:
     """Cuantiza un porcentaje a 2 decimales y lo acota al rango del DecimalField."""
-    pct = Decimal(str(round(value, 2)))
+    pct = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return min(max(pct, Decimal("0")), MAX_PCT)
+
+
+def _quantize_kg(value: float) -> Decimal:
+    """Cuantiza kg a 2 decimales, la escala con la que exporta el sistema de origen."""
+    kg = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return min(kg, MAX_KG)

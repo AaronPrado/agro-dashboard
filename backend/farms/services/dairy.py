@@ -9,7 +9,6 @@ valor carece de respaldo publicado directo, el comentario lo marca como
 
 import math
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
 
 # --- Curva de lactación: función de Wood (1967), y(t) = a·t^b·e^(−c·t) ---
 # Parámetros para Holstein estimados por REML/Bayes sobre ganado Holstein
@@ -22,10 +21,6 @@ WOOD_C = 0.00328
 # Duración de la lactación hasta el secado; 305 días es el estándar del control
 # lechero oficial.  [modelado sobre práctica estándar del sector]
 LACTATION_DAYS = 305
-
-# Densidad de la leche para convertir kg→L (la producción se publica en kg).
-# ~1.03 kg/L es el valor de referencia habitual.  [orden de magnitud verificado]
-MILK_DENSITY_KG_PER_L = Decimal("1.03")
 
 # Factor multiplicativo sobre `a` de Wood por raza, relativo a la Holstein (=1.0).
 # Derivado de rangos divulgativos de producción diaria (Holstein 30–40, Brown
@@ -99,13 +94,3 @@ def seasonal_factor(day: date) -> float:
     doy = day.timetuple().tm_yday
     phase = 2 * math.pi * (doy - SUMMER_PEAK_DOY) / 365
     return 1.0 - SEASONAL_TROUGH * (1 + math.cos(phase)) / 2
-
-
-def to_liters(kg: float) -> Decimal:
-    """Convierte kg de leche a litros (÷densidad) cuantizando a 2 decimales.
-
-    Cuantizar aquí respeta el `DecimalField(max_digits=5, decimal_places=2)` de
-    `DailyYield.liters` y evita sorpresas de redondeo al persistir.
-    """
-    liters = Decimal(str(kg)) / MILK_DENSITY_KG_PER_L
-    return liters.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
