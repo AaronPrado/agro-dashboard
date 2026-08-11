@@ -20,6 +20,7 @@ from farms.models import (
     Animal,
     AnimalBatch,
     AnimalBatchMembership,
+    BatchMilkSample,
     BatchRation,
     Crop,
     DailyYield,
@@ -46,6 +47,8 @@ from farms.services.canonical import (
     FarmRegistration,
     ForageAnalysisRecord,
     MilkQualityRecord,
+    MilkResultRecord,
+    MilkSampleRecord,
     PlotRecord,
     ProductionReading,
     RationIngredientRecord,
@@ -88,6 +91,8 @@ class LoadSummary:
     analytes: int = 0
     forage_analyses: int = 0
     analysis_results: int = 0
+    milk_samples: int = 0
+    milk_results: int = 0
 
     @property
     def loaded(self) -> int:
@@ -106,6 +111,8 @@ class LoadSummary:
             + self.analytes
             + self.forage_analyses
             + self.analysis_results
+            + self.milk_samples
+            + self.milk_results
             + self.animals
             + self.daily_yields
             + self.milk_records
@@ -130,6 +137,8 @@ class LoadSummary:
         self.analytes += other.analytes
         self.forage_analyses += other.forage_analyses
         self.analysis_results += other.analysis_results
+        self.milk_samples += other.milk_samples
+        self.milk_results += other.milk_results
         return self
 
 
@@ -176,6 +185,8 @@ def load(batch: CanonicalBatch, *, reference: str = "") -> tuple[IngestionRun, L
     _load_analytes(batch.analytes, summary)
     _load_forage_analyses(batch.forage_analyses, run, summary)
     _load_analysis_results(batch.analysis_results, run, summary)
+    _load_milk_samples(batch.milk_samples, run, summary)
+    _load_milk_results(batch.milk_results, run, summary)
     _load_production(batch.production, run, summary)
     _load_quality(batch.quality, run, summary)
     _load_rejects(batch.rejects, run, summary)
@@ -480,6 +491,48 @@ def _load_analysis_results(
         summary.analysis_results += 1
 
 
+def _load_milk_samples(
+    records: Iterable[MilkSampleRecord], run: IngestionRun, summary: LoadSummary
+) -> None:
+    """Cabeceras de muestra de leche, colgadas del lote que se muestreó."""
+    records = list(records)
+    if not records:
+        return
+    batches = _batch_ids({(record.farm_code, record.batch_name) for record in records})
+    for record in records:
+        BatchMilkSample.objects.update_or_create(
+            batch_id=batches[(record.farm_code, record.batch_name)],
+            date=record.date,
+            defaults={"laboratory": record.laboratory, "ingestion_run": run},
+        )
+        summary.milk_samples += 1
+
+
+def _load_milk_results(
+    records: Iterable[MilkResultRecord], run: IngestionRun, summary: LoadSummary
+) -> None:
+    """Valores por analito de una muestra de leche.
+
+    Es la otra rama de `AnalysisResult`: el análisis NIR queda en `None` y el
+    resultado cuelga de la muestra, que es lo que exige el XOR del modelo.
+    """
+    records = list(records)
+    if not records:
+        return
+    samples = _milk_sample_ids(
+        {(record.farm_code, record.batch_name, record.date) for record in records}
+    )
+    analytes = _analyte_ids({record.analyte_code for record in records})
+    for record in records:
+        AnalysisResult.objects.update_or_create(
+            nir_analysis=None,
+            milk_sample_id=samples[(record.farm_code, record.batch_name, record.date)],
+            analyte_id=analytes[record.analyte_code],
+            defaults={"value": record.value, "ingestion_run": run},
+        )
+        summary.milk_results += 1
+
+
 def _load_production(
     readings: Iterable[ProductionReading], run: IngestionRun, summary: LoadSummary
 ) -> None:
@@ -669,6 +722,19 @@ def _nir_analysis_ids(keys: set[tuple[str, str, date]]) -> dict[tuple[str, str, 
     missing = keys - found.keys()
     if missing:
         raise IngestionError(f"análisis no registrados: {sorted(missing)}")
+    return found
+
+
+def _milk_sample_ids(keys: set[tuple[str, str, date]]) -> dict[tuple[str, str, date], int]:
+    """Resuelve (explotación, lote, fecha) a clave primaria de la muestra."""
+    dates = {sampled_on for _, _, sampled_on in keys}
+    rows = BatchMilkSample.objects.filter(date__in=dates).values_list(
+        "batch__farm__code", "batch__name", "date", "id"
+    )
+    found = {(farm, batch, sampled_on): pk for farm, batch, sampled_on, pk in rows}
+    missing = keys - found.keys()
+    if missing:
+        raise IngestionError(f"muestras de leche no registradas: {sorted(missing)}")
     return found
 
 
