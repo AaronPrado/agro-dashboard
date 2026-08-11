@@ -1,9 +1,10 @@
 # Makefile — atajos sobre docker compose. Las recetas usan TABULADOR, no espacios.
 COMPOSE := docker compose
 SERVICE := web
+FRONTEND := frontend
 
 .DEFAULT_GOAL := help
-.PHONY: help build up up-d down logs migrate makemigrations shell lint format test seed lint-fix
+.PHONY: help build up up-d down logs migrate makemigrations shell lint format test seed lint-fix front-install front-dev front-lint front-build
 
 help:  ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -49,3 +50,15 @@ test:  ## Ejecuta la batería de tests con pytest
 
 seed:  ## Puebla la BD con datos mockeados (disponible desde la Sesión 3)
 	$(COMPOSE) run --rm $(SERVICE) python manage.py seed
+
+front-install:  ## Instala las dependencias del cliente (host, no Docker)
+	cd $(FRONTEND) && npm install
+
+front-dev:  ## Levanta el dev server de Vite (host; reenvía /api al backend)
+	cd $(FRONTEND) && npm run dev
+
+front-lint:  ## Lint del cliente con ESLint (host)
+	cd $(FRONTEND) && npm run lint
+
+front-build:  ## Compila el cliente para producción (host)
+	cd $(FRONTEND) && npm run build
