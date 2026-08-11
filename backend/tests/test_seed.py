@@ -55,6 +55,40 @@ def _produccion():
     )
 
 
+def _inventario():
+    """Cuántas filas hay de cada modelo que escribe la siembra.
+
+    `IngestionRun` queda fuera a propósito: cada ejecución registra sus cargas,
+    así que crece aunque no entre ni un dato nuevo.
+    """
+    modelos = (
+        Farm,
+        Animal,
+        DailyYield,
+        MilkRecord,
+        Plot,
+        Crop,
+        Silage,
+        Ration,
+        RationIngredient,
+        AnimalBatchMembership,
+        BatchRation,
+        Analyte,
+        AnalysisResult,
+    )
+    return {modelo.__name__: modelo.objects.count() for modelo in modelos}
+
+
+def _pertenencias():
+    """Las pertenencias por clave natural, con el extremo abierto normalizado."""
+    return sorted(
+        (ear_tag, lote, desde, hasta or datetime.date.max)
+        for ear_tag, lote, desde, hasta in AnimalBatchMembership.objects.values_list(
+            "animal__ear_tag", "batch__name", "date_from", "date_to"
+        )
+    )
+
+
 @pytest.mark.django_db
 def test_la_siembra_puebla_de_extremo_a_extremo():
     """De la generación a la base pasando por el crudo y los adaptadores."""
@@ -306,3 +340,48 @@ def test_semillas_distintas_producen_datos_distintos():
     segunda = _produccion()
 
     assert primera != segunda
+
+
+@pytest.mark.django_db
+def test_resembrar_la_misma_ventana_sin_borrar_actualiza_en_vez_de_duplicar():
+    """El camino de una entrega corregida que se vuelve a ingerir.
+
+    Es el único test que ejercita los cargadores sobre filas que ya existen: el
+    resto de la batería siembra siempre con `--clear`, es decir, sobre una base
+    vacía, y por eso no ve lo que hace el upsert cuando encuentra algo.
+    """
+    _seed()
+    inventario = _inventario()
+    pertenencias = _pertenencias()
+    produccion = _produccion()
+
+    _seed(clear=False)
+
+    assert _inventario() == inventario
+    assert _pertenencias() == pertenencias
+    assert _produccion() == produccion
+
+
+@pytest.mark.django_db
+def test_resembrar_otra_ventana_sin_borrar_choca_con_el_periodo_abierto():
+    """La idempotencia del upsert alcanza a la misma ventana, no a otra.
+
+    La clave natural de una pertenencia incluye su fecha de inicio, así que mover
+    la ventana recalcula la partición y las filas nuevas no reconocen a las
+    viejas: intentan insertarse y el índice único parcial de "un solo periodo
+    abierto por animal" las rechaza. Resembrar otra ventana exige `--clear`, y
+    este test lo deja escrito en lugar de dejarlo como sorpresa.
+    """
+    _seed()
+    desplazamiento = datetime.timedelta(days=30)
+
+    with pytest.raises(IntegrityError, match="one_open_per_animal"):
+        call_command(
+            "seed",
+            seed=42,
+            farms=1,
+            animals_per_farm=4,
+            start=START + desplazamiento,
+            end=END + desplazamiento,
+            clear=False,
+        )
