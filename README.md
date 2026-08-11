@@ -132,7 +132,17 @@ Requisitos: Docker y Docker Compose.
 
    El comando acepta `--seed`, `--farms`, `--animals-per-farm`, `--start`, `--end`
    y `--clear`. Con la misma semilla y los mismos parámetros produce siempre los
-   mismos datos; `--clear` vacía la base antes de sembrar.
+   mismos datos, y para que eso valga también entre un día y el siguiente **la
+   ventana por defecto es una fecha fija**, no el día de hoy; `--start` y `--end`
+   la desplazan.
+
+   > **Resembrar sobre una base ya poblada solo es seguro con la misma ventana.**
+   > Los datos se escriben actualizando la fila existente en lugar de duplicarla,
+   > pero eso funciona porque la fila se reconoce por su clave natural, y en los
+   > periodos con vigencia temporal esa clave incluye la fecha de inicio. Al
+   > mover la ventana, esas fechas se recalculan, las filas nuevas no reconocen a
+   > las viejas y la base rechaza la carga. Para sembrar otra ventana,
+   > `--clear`.
 
    No escribe en la base directamente: genera los datos, serializa la entrega que
    exportaría cada sistema de origen, se la pasa a su adaptador y carga el
