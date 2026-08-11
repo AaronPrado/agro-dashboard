@@ -53,6 +53,9 @@ MAIZE_STARCH_REFERENCE = Decimal("22.25")
 # la posición dentro del rango.  [modelado]
 SAMPLING_SIGMA = 0.06
 
+# Nombre genérico: no se atribuye la analítica a ningún laboratorio real.
+MILK_LABORATORY = "Laboratorio de análisis de leche"
+
 
 @dataclass(frozen=True, slots=True)
 class SilagePortion:
