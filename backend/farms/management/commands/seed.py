@@ -23,6 +23,8 @@ from farms.services.ingest import LoadSummary
 DEFAULT_SEED = 42
 DEFAULT_FARMS = 5
 DEFAULT_ANIMALS_PER_FARM = 40
+# Se desplaza con --start/--end cuando hace falta otra.
+DEFAULT_END = date(2026, 8, 11)
 DEFAULT_WINDOW_DAYS = 365
 
 
@@ -66,7 +68,11 @@ class Command(BaseCommand):
             "--end",
             type=date.fromisoformat,
             default=None,
-            help="Último día de la ventana de producción (ISO YYYY-MM-DD).",
+            help=(
+                "Último día de la ventana de producción (ISO YYYY-MM-DD). "
+                f"Por defecto {DEFAULT_END.isoformat()}, fijo para que resembrar "
+                "otro día produzca los mismos datos."
+            ),
         )
         parser.add_argument(
             "--clear",
@@ -79,7 +85,7 @@ class Command(BaseCommand):
         animals_per_farm: int = options["animals_per_farm"]
         seed: int = options["seed"]
 
-        end: date = options["end"] or date.today()
+        end: date = options["end"] or DEFAULT_END
         start: date = options["start"] or end - timedelta(days=DEFAULT_WINDOW_DAYS)
 
         if farms_count < 1 or animals_per_farm < 1:
