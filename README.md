@@ -71,8 +71,9 @@ reproducible mediante un comando de gestión, no con datos escritos a mano.
 
 - **Backend:** Django + Django REST Framework
 - **Base de datos:** PostgreSQL
-- **Frontend:** React (hooks) + Recharts
-- **Entorno de desarrollo:** Docker Compose (Django + PostgreSQL)
+- **Frontend:** React (hooks) + Recharts, con Vite como herramienta de desarrollo
+- **Entorno de desarrollo:** Docker Compose (Django + PostgreSQL) y el servidor
+  de desarrollo de Vite para el cliente
 
 ## Principios de diseño
 
@@ -139,8 +140,36 @@ Requisitos: Docker y Docker Compose.
    ocupando solo el lugar del sistema de origen. El resumen final detalla qué
    entró por cada fuente y cuántos registros se rechazaron.
 
+4. **Levanta el cliente web.** Vive en `frontend/` y corre en el host, no en
+   Docker. Necesita la versión de Node que fija `frontend/.nvmrc`:
+
+   ```bash
+   make front-install && make front-dev
+   ```
+
+   El cliente queda en `http://localhost:5173` (Vite usa el siguiente puerto
+   libre si ese está ocupado) y **necesita el backend levantado y con datos**:
+   los pasos 2 y 3 son requisito.
+
 `make help` lista el resto de tareas: `make test`, `make lint`, `make format`,
-`make migrate`, `make shell`.
+`make migrate`, `make shell`, y las del cliente `make front-lint` y
+`make front-build`.
+
+### Cómo llega el cliente a la API
+
+El servidor de desarrollo de Vite **reenvía todo lo que cuelga de `/api` al
+backend** (`server.proxy` en `frontend/vite.config.js`). Para el navegador hay un
+único origen, así que las peticiones no son de origen cruzado y no interviene
+CORS: el backend no necesita cabecera alguna para servir al cliente. Es también
+la forma que toma en despliegue, donde el estático y la API se sirven detrás del
+mismo proxy inverso.
+
+La raíz de la API se puede cambiar con la variable de entorno
+`VITE_API_BASE_URL`, documentada en `frontend/.env.example`; sin definir vale
+`/api`, que es la ruta reenviada. Vite solo expone al navegador las variables con
+prefijo `VITE_`. Apuntarla a una URL absoluta sirve para servir el cliente sin
+ese reenvío, pero entonces las peticiones sí son de origen cruzado y el backend
+necesita cabeceras CORS, que hoy no están configuradas.
 
 ## API
 
