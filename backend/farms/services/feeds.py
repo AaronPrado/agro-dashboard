@@ -18,10 +18,27 @@ from farms.services.adapters.field_notebook import (
     INGREDIENT_SILAGE,
     SPECIES_CODES,
 )
+from farms.services.adapters.milk_lab import (
+    ANALYTE_COLUMNS,
+    DATE_SEPARATOR,
+    FARM_KEY,
+    LABORATORY_KEY,
+    MILK_ANALYTE_CODES,
+    RESULT_COLUMNS,
+    SECTION_ANALYTES,
+    SECTION_RESULTS,
+)
+from farms.services.adapters.milk_lab import (
+    SEPARATOR as MILK_LAB_SEPARATOR,
+)
+from farms.services.adapters.milk_lab import (
+    TITLE as MILK_LAB_TITLE,
+)
 from farms.services.adapters.milk_recording import BREED_CODES, SCC_THOUSANDS
 from farms.services.adapters.nir_lab import ANALYTE_CODES
 from farms.services.agronomy import ANALYTES, FEEDING_GROUPS, LABORATORY, RAW_MATERIALS
 from farms.services.generation import AnimalData, FarmData, MilkRecordData
+from farms.services.milk_quality import MILK_ANALYTES, MILK_LABORATORY
 
 MILKING_ROBOT_HEADER = "crotal;fecha;hora;kg"
 
@@ -313,3 +330,46 @@ def nir_lab_feed(farm: FarmData) -> str:
 def _short_year(day: date | None) -> str:
     """Fecha del cuaderno: dos cifras de año, y la marca de lo que no aplica."""
     return NOTEBOOK_MISSING if day is None else f"{day:%d-%m-%y}"
+
+
+# Las inversas del mapeo del adaptador y las etiquetas del catálogo, para que el
+# informe declare qué mide, igual que hace el de forrajes.
+MILK_ANALYTE_TO_CODE = {model: lab for lab, model in MILK_ANALYTE_CODES.items()}
+MILK_ANALYTE_LABELS = {code: (name, unit) for code, name, unit in MILK_ANALYTES}
+
+
+def milk_lab_feed(farm: FarmData) -> str:
+    """Informe del laboratorio de leche de una explotación, en tabla ancha.
+
+    La forma contraria a la del laboratorio de forrajes: un analito por columna y
+    una muestra por fila, con el catálogo declarado antes de la tabla. Un
+    parámetro no determinado deja la celda vacía, que es como lo escribe una hoja
+    y no como lo escribe un JSON.
+    """
+    codes = [code for code, _, _ in MILK_ANALYTES]
+    lines = [
+        MILK_LAB_TITLE,
+        _milk_lab_row(LABORATORY_KEY, MILK_LABORATORY),
+        _milk_lab_row(FARM_KEY, farm.code),
+        SECTION_ANALYTES,
+        _milk_lab_row(*ANALYTE_COLUMNS),
+    ]
+    for code in codes:
+        name, unit = MILK_ANALYTE_LABELS[code]
+        lines.append(_milk_lab_row(MILK_ANALYTE_TO_CODE[code], name, unit))
+
+    lines.append(SECTION_RESULTS)
+    lines.append(_milk_lab_row(*RESULT_COLUMNS, *(MILK_ANALYTE_TO_CODE[code] for code in codes)))
+    for sample in farm.milk_samples:
+        values = (_comma(sample.results[code]) for code in codes)
+        lines.append(_milk_lab_row(sample.batch_name, _dotted(sample.date), *values))
+    return "\n".join(lines)
+
+
+def _milk_lab_row(*values: str) -> str:
+    return MILK_LAB_SEPARATOR.join(values)
+
+
+def _dotted(day: date) -> str:
+    """Fecha con puntos, como la escribe el gestor del laboratorio."""
+    return day.strftime(f"%d{DATE_SEPARATOR}%m{DATE_SEPARATOR}%Y")
