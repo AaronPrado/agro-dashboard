@@ -18,6 +18,7 @@ from farms.models import (
     Analyte,
     Animal,
     AnimalBatchMembership,
+    BatchMilkSample,
     BatchRation,
     Crop,
     DailyYield,
@@ -30,7 +31,8 @@ from farms.models import (
     Silage,
     SourceSystem,
 )
-from farms.services.agronomy import FEEDING_GROUPS, FORAGE_RANGES
+from farms.services.agronomy import ANALYTES, FEEDING_GROUPS, FORAGE_RANGES
+from farms.services.milk_quality import MILK_ANALYTES
 
 START = datetime.date(2026, 1, 1)
 END = datetime.date(2026, 3, 31)
@@ -100,11 +102,6 @@ def test_la_siembra_puebla_de_extremo_a_extremo():
     assert MilkRecord.objects.exists()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="el laboratorio de leche ya está declarado como fuente pero el comando "
-    "todavía no lo ingiere; la marca cae cuando `seed` lo cablee",
-)
 @pytest.mark.django_db
 def test_el_dato_entra_por_mas_de_una_fuente():
     """La tesis en un assert: dos sistemas distintos, un solo modelo."""
@@ -112,6 +109,39 @@ def test_el_dato_entra_por_mas_de_una_fuente():
 
     fuentes = set(IngestionRun.objects.values_list("source", flat=True))
     assert fuentes == set(SourceSystem.values)
+
+
+@pytest.mark.django_db
+def test_las_muestras_de_leche_cuelgan_de_un_lote_de_la_explotacion():
+    """Cierra el hilo: el lote que come una ración es el que da la muestra."""
+    _seed()
+
+    assert BatchMilkSample.objects.exists()
+    for sample in BatchMilkSample.objects.select_related("batch__farm"):
+        assert sample.batch.farm.code is not None
+        assert sample.results.exists()
+
+
+@pytest.mark.django_db
+def test_los_resultados_analiticos_reparten_las_dos_matrices_sin_mezclarlas():
+    """El XOR sobre la base sembrada: cada resultado cuelga de una sola muestra."""
+    _seed()
+
+    resultados = AnalysisResult.objects.all()
+    assert resultados.filter(nir_analysis__isnull=False).exists()
+    assert resultados.filter(milk_sample__isnull=False).exists()
+    assert not resultados.filter(nir_analysis__isnull=False, milk_sample__isnull=False).exists()
+    assert not resultados.filter(nir_analysis__isnull=True, milk_sample__isnull=True).exists()
+
+
+@pytest.mark.django_db
+def test_los_dos_laboratorios_alimentan_un_solo_catalogo_de_analitos():
+    """Forraje y leche miden cosas distintas y comparten tabla, no vocabulario."""
+    _seed()
+
+    codigos = set(Analyte.objects.values_list("code", flat=True))
+    assert {code for code, _, _ in ANALYTES} <= codigos
+    assert {code for code, _, _ in MILK_ANALYTES} <= codigos
 
 
 @pytest.mark.django_db
@@ -200,7 +230,11 @@ def test_los_valores_del_nir_caen_dentro_del_rango_publicado():
     """
     _seed()
 
-    resultados = AnalysisResult.objects.select_related("analyte", "nir_analysis__silage__crop")
+    # La tabla guarda las dos matrices, así que hay que pedir la rama del forraje:
+    # un resultado de leche no tiene análisis NIR del que colgar.
+    resultados = AnalysisResult.objects.filter(nir_analysis__isnull=False).select_related(
+        "analyte", "nir_analysis__silage__crop"
+    )
     assert resultados.exists()
     for resultado in resultados:
         especie = resultado.nir_analysis.silage.crop.species
@@ -216,9 +250,9 @@ def test_el_almidon_solo_se_mide_en_el_maiz():
 
     especies = {
         resultado.nir_analysis.silage.crop.species
-        for resultado in AnalysisResult.objects.filter(analyte__code="almidon").select_related(
-            "nir_analysis__silage__crop"
-        )
+        for resultado in AnalysisResult.objects.filter(
+            analyte__code="almidon", nir_analysis__isnull=False
+        ).select_related("nir_analysis__silage__crop")
     }
 
     assert especies == {Crop.Species.MAIZE}
