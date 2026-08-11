@@ -22,6 +22,7 @@ from farms.services.agronomy import (
     RATION_INTERVAL_DAYS,
     ROTATION_SHARE,
     SILAGES_PER_RATION,
+    STARCH_ANALYTE,
     crop_dates,
     forage_analysis,
     plot_area_ha,
@@ -35,6 +36,7 @@ from farms.services.dairy import (
     seasonal_factor,
     wood_yield_kg,
 )
+from farms.services.milk_quality import SilagePortion, grass_forage_share, milk_analysis
 
 ONE_DAY = timedelta(days=1)
 
@@ -220,6 +222,15 @@ class BatchRationData:
 
 
 @dataclass(slots=True)
+class BatchMilkSampleData:
+    """Muestra compuesta de la leche de un lote, con su valor por analito."""
+
+    batch_name: str
+    date: date
+    results: dict[str, Decimal]
+
+
+@dataclass(slots=True)
 class FarmData:
     """Granja con sus animales, su base territorial y su alimentación."""
 
@@ -231,6 +242,7 @@ class FarmData:
     plots: list[PlotData]
     rations: list[RationData]
     batch_rations: list[BatchRationData]
+    milk_samples: list[BatchMilkSampleData]
 
 
 @dataclass(slots=True)
@@ -249,15 +261,20 @@ def generate(rng: random.Random, params: GenerationParams) -> list[FarmData]:
 
 
 def _make_farm(rng: random.Random, index: int, params: GenerationParams) -> FarmData:
-    """Genera una granja con su plantilla de animales y su base territorial."""
+    """Genera una granja: primero su base territorial, después el rebaño.
+
+    El orden no es indiferente. La muestra de leche de un lote depende de la
+    ración que comía y de si tenía animales, así que va la última.
+    """
     name = rng.choice(FARM_NAMES)
     municipality, province = rng.choice(GALICIAN_PLACES)
+    plots = _make_plots(rng, params)
+    rations = _make_rations(params, plots)
+    batch_rations = _make_batch_rations(rations)
     animals = [
         _make_animal(rng, params, ear_tag=f"{EAR_TAG_PREFIX}{index + 1:02d}{n + 1:06d}")
         for n in range(params.animals_per_farm)
     ]
-    plots = _make_plots(rng, params)
-    rations = _make_rations(params, plots)
     # El índice garantiza un código único aunque se repita el nombre.
     return FarmData(
         name=name,
@@ -267,7 +284,8 @@ def _make_farm(rng: random.Random, index: int, params: GenerationParams) -> Farm
         animals=animals,
         plots=plots,
         rations=rations,
-        batch_rations=_make_batch_rations(rations),
+        batch_rations=batch_rations,
+        milk_samples=_make_milk_samples(rng, params, animals, plots, rations, batch_rations),
     )
 
 
@@ -408,6 +426,87 @@ def _make_batch_rations(rations: list[RationData]) -> list[BatchRationData]:
                 )
             )
     return periods
+
+
+def _make_milk_samples(
+    rng: random.Random,
+    params: GenerationParams,
+    animals: list[AnimalData],
+    plots: list[PlotData],
+    rations: list[RationData],
+    batch_rations: list[BatchRationData],
+) -> list[BatchMilkSampleData]:
+    """Muestra mensual de la leche de cada lote en producción.
+
+    Se sigue la rejilla del control lechero para que las dos analíticas sean
+    comparables. No se muestrea el lote de secas, que no da leche, ni un lote sin
+    animales ese día: la serie queda con huecos, como la de producción.
+    """
+    starch = _silage_starch(plots)
+    ingredients = {(ration.name, ration.formulated_on): ration.ingredients for ration in rations}
+    samples: list[BatchMilkSampleData] = []
+    for day in _monthly_dates(params.start, params.end):
+        for group in FEEDING_GROUPS:
+            if group.max_days_in_milk is None:
+                continue  # el grupo de las secas no tiene leche que muestrear
+            if not _batch_is_stocked(animals, group.batch_name, day):
+                continue
+            period = _ration_on(batch_rations, group.batch_name, day)
+            if period is None:
+                continue  # aún no se había formulado ninguna ración para el lote
+            portions = [
+                SilagePortion(
+                    dry_matter_kg=ingredient.dry_matter_kg,
+                    starch_pct=starch[ingredient.silage_code],
+                )
+                for ingredient in ingredients[(period.ration_name, period.formulated_on)]
+                if ingredient.silage_code is not None
+            ]
+            samples.append(
+                BatchMilkSampleData(
+                    batch_name=group.batch_name,
+                    date=day,
+                    results=milk_analysis(rng, grass_forage_share(portions)),
+                )
+            )
+    return samples
+
+
+def _silage_starch(plots: list[PlotData]) -> dict[str, Decimal | None]:
+    """Almidón que midió el NIR de cada silo, indexado por su código."""
+    return {
+        silage.code: silage.analysis.results[STARCH_ANALYTE]
+        for plot in plots
+        for crop in plot.crops
+        for silage in crop.silages
+    }
+
+
+def _batch_is_stocked(animals: list[AnimalData], batch_name: str, day: date) -> bool:
+    """Indica si algún animal pertenecía a ese lote ese día."""
+    return any(
+        membership.batch_name == batch_name
+        and membership.date_from <= day
+        and (membership.date_to is None or day <= membership.date_to)
+        for animal in animals
+        for membership in animal.memberships
+    )
+
+
+def _ration_on(
+    batch_rations: list[BatchRationData], batch_name: str, day: date
+) -> BatchRationData | None:
+    """Periodo de ración vigente para un lote ese día, si lo hay."""
+    return next(
+        (
+            period
+            for period in batch_rations
+            if period.batch_name == batch_name
+            and period.date_from <= day
+            and (period.date_to is None or day <= period.date_to)
+        ),
+        None,
+    )
 
 
 def _make_memberships(

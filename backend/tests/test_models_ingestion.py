@@ -26,7 +26,7 @@ def test_una_carga_registra_fuente_y_momento(ingestion_run):
 
 
 @pytest.mark.django_db
-def test_las_cuatro_fuentes_son_las_que_esperan_los_adaptadores():
+def test_las_fuentes_son_las_que_esperan_los_adaptadores():
     """Fija el catálogo: añadir una fuente es una decisión, no un descuido.
 
     Los adaptadores declaran su origen con estos valores, y el mismo literal
@@ -37,6 +37,7 @@ def test_las_cuatro_fuentes_son_las_que_esperan_los_adaptadores():
         "milking_robot",
         "milk_recording",
         "nir_lab",
+        "milk_lab",
         "field_notebook",
     }
 

@@ -8,11 +8,13 @@ from django.core.management.base import BaseCommand, CommandError
 
 from farms.services import ingest
 from farms.services.adapters.field_notebook import FieldNotebookAdapter
+from farms.services.adapters.milk_lab import MilkLabAdapter
 from farms.services.adapters.milk_recording import MilkRecordingAdapter
 from farms.services.adapters.milking_robot import MilkingRobotAdapter
 from farms.services.adapters.nir_lab import NIRLabAdapter
 from farms.services.feeds import (
     field_notebook_feed,
+    milk_lab_feed,
     milk_recording_feeds,
     milking_robot_feed,
     nir_lab_feed,
@@ -110,6 +112,7 @@ class Command(BaseCommand):
             summary += self._ingest_milk_recording(farm_data)
             summary += self._ingest_field_notebook(farm_data)
             summary += self._ingest_nir_lab(farm_data)
+            summary += self._ingest_milk_lab(farm_data)
             summary += self._ingest_milking_robot(rng, farm_data)
 
         self.stdout.write(
@@ -122,6 +125,8 @@ class Command(BaseCommand):
                 f"y {summary.batch_rations} periodos de ración, "
                 f"{summary.forage_analyses} análisis NIR "
                 f"con {summary.analysis_results} resultados, "
+                f"{summary.milk_samples} muestras de leche de lote "
+                f"con {summary.milk_results} resultados, "
                 f"{summary.animals} altas de animal, "
                 f"{summary.daily_yields} producciones diarias, "
                 f"{summary.milk_records} controles, "
@@ -168,6 +173,18 @@ class Command(BaseCommand):
         adapter = NIRLabAdapter()
         batch = adapter.parse(nir_lab_feed(farm_data))
         _, partial = ingest.load(batch, reference=f"nir-{farm_data.code}.json")
+        return partial
+
+    def _ingest_milk_lab(self, farm_data: FarmData) -> LoadSummary:
+        """Ingiere el informe del laboratorio de análisis de leche.
+
+        Va después del cuaderno de campo porque cada muestra cuelga de un lote, y
+        quien declara los lotes es el cuaderno. Del laboratorio de forrajes no
+        depende: son dos analíticas de matrices distintas que no se cruzan.
+        """
+        adapter = MilkLabAdapter()
+        batch = adapter.parse(milk_lab_feed(farm_data))
+        _, partial = ingest.load(batch, reference=f"leche-{farm_data.code}.csv")
         return partial
 
     def _ingest_milking_robot(self, rng: random.Random, farm_data: FarmData) -> LoadSummary:

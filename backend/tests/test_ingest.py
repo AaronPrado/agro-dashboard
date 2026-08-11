@@ -10,12 +10,25 @@ from decimal import Decimal
 
 import pytest
 
-from farms.models import Animal, DailyYield, Farm, IngestionReject, IngestionRun, SourceSystem
+from farms.models import (
+    AnalysisResult,
+    Animal,
+    BatchMilkSample,
+    DailyYield,
+    Farm,
+    IngestionReject,
+    IngestionRun,
+    SourceSystem,
+)
 from farms.services.canonical import (
+    AnalyteRecord,
+    AnimalBatchRecord,
     AnimalRegistration,
     CanonicalBatch,
     FarmRegistration,
     MilkQualityRecord,
+    MilkResultRecord,
+    MilkSampleRecord,
     ProductionReading,
     Reject,
 )
@@ -24,6 +37,7 @@ from farms.services.ingest import IngestionError, clear, load
 FARM_CODE = "casa-grande"
 EAR_TAG = "ES221100010001"
 DAY = datetime.date(2026, 2, 10)
+BATCH_NAME = "Alta producción"
 
 
 def _farm() -> FarmRegistration:
@@ -210,9 +224,115 @@ def test_lo_rechazado_por_el_adaptador_se_guarda_con_su_motivo():
 def test_clear_vacia_hechos_y_cargas():
     """El orden importa: la procedencia es PROTECT y bloquea el borrado inverso."""
     load(_census())
+    load(_milk_lab())
 
     clear()
 
     assert Farm.objects.count() == 0
     assert Animal.objects.count() == 0
+    assert BatchMilkSample.objects.count() == 0
+    assert AnalysisResult.objects.count() == 0
     assert IngestionRun.objects.count() == 0
+
+
+# --- La analítica de leche del lote ---
+
+
+def _milk_lab(value=Decimal("1.2300"), source=SourceSystem.MILK_LAB) -> CanonicalBatch:
+    """Entrega del laboratorio de leche: el lote, el analito y una muestra.
+
+    Trae también la explotación y el lote porque el cargador resuelve por clave
+    natural: sin ellos no habría a qué anclar la muestra.
+    """
+    return CanonicalBatch(
+        source=source,
+        farms=[_farm()],
+        batches=[AnimalBatchRecord(farm_code=FARM_CODE, name=BATCH_NAME)],
+        analytes=[AnalyteRecord(code="cla", name="Ácido linoleico conjugado", unit="% de AG")],
+        milk_samples=[
+            MilkSampleRecord(
+                farm_code=FARM_CODE,
+                batch_name=BATCH_NAME,
+                date=DAY,
+                laboratory="Laboratorio de análisis de leche",
+            )
+        ],
+        milk_results=[
+            MilkResultRecord(
+                farm_code=FARM_CODE,
+                batch_name=BATCH_NAME,
+                date=DAY,
+                analyte_code="cla",
+                value=value,
+            )
+        ],
+    )
+
+
+@pytest.mark.django_db
+def test_la_muestra_de_leche_cuelga_de_su_lote():
+    """El laboratorio nombra el lote; resolverlo a clave primaria es de aquí."""
+    run, _ = load(_milk_lab())
+
+    sample = BatchMilkSample.objects.get()
+    assert sample.batch.name == BATCH_NAME
+    assert sample.batch.farm.code == FARM_CODE
+    assert sample.date == DAY
+    assert sample.ingestion_run == run
+
+
+@pytest.mark.django_db
+def test_el_resultado_de_leche_deja_vacia_la_rama_del_analisis_nir():
+    """El XOR del modelo: un resultado es de forraje o de leche, nunca de ambos."""
+    load(_milk_lab())
+
+    result = AnalysisResult.objects.get()
+    assert result.nir_analysis is None
+    assert result.milk_sample == BatchMilkSample.objects.get()
+    assert result.analyte.code == "cla"
+    assert result.value == Decimal("1.2300")
+
+
+@pytest.mark.django_db
+def test_los_contadores_distinguen_muestras_de_resultados():
+    """Una muestra con cuatro analitos son cinco filas, no una."""
+    _, summary = load(_milk_lab())
+
+    assert summary.milk_samples == 1
+    assert summary.milk_results == 1
+
+
+@pytest.mark.django_db
+def test_reingerir_una_muestra_corregida_actualiza_en_vez_de_duplicar():
+    """El laboratorio rectifica un valor y reenvía el informe entero."""
+    load(_milk_lab())
+
+    load(_milk_lab(value=Decimal("1.8800")))
+
+    assert BatchMilkSample.objects.count() == 1
+    assert AnalysisResult.objects.count() == 1
+    assert AnalysisResult.objects.get().value == Decimal("1.8800")
+
+
+@pytest.mark.django_db
+def test_una_muestra_de_un_lote_desconocido_aborta_la_entrega():
+    """Clave natural que no casa: se para, no se carga a medias."""
+    batch = _milk_lab()
+    batch.batches = []
+
+    with pytest.raises(IngestionError, match="lotes no registrados"):
+        load(batch)
+
+    assert BatchMilkSample.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_un_resultado_sin_su_muestra_aborta_la_entrega():
+    """Un valor suelto no se puede anclar, y colgarlo de otra muestra sería peor."""
+    batch = _milk_lab()
+    batch.milk_samples = []
+
+    with pytest.raises(IngestionError, match="muestras de leche no registradas"):
+        load(batch)
+
+    assert AnalysisResult.objects.count() == 0

@@ -218,6 +218,36 @@ class AnalysisResultRecord:
     value: Decimal
 
 
+@dataclass(frozen=True, slots=True)
+class MilkSampleRecord:
+    """Cabecera de una muestra de leche de lote: qué lote, cuándo y quién la hizo.
+
+    El lote se nombra, no se numera: quien muestrea conoce el nombre que la
+    explotación le da, no la clave primaria de esta base.
+    """
+
+    farm_code: str
+    batch_name: str
+    date: date
+    laboratory: str
+
+
+@dataclass(frozen=True, slots=True)
+class MilkResultRecord:
+    """Valor de un analito en una muestra de leche de lote.
+
+    Es el gemelo de `AnalysisResultRecord` para la otra rama del análisis. Son
+    dos tipos y no uno con campos opcionales, por el mismo motivo que el modelo
+    usa dos claves ajenas excluyentes: un resultado es de forraje o de leche.
+    """
+
+    farm_code: str
+    batch_name: str
+    date: date
+    analyte_code: str
+    value: Decimal
+
+
 @dataclass(slots=True)
 class CanonicalBatch:
     """Lo que entrega un adaptador tras normalizar una entrega de su fuente.
@@ -244,4 +274,6 @@ class CanonicalBatch:
     analytes: list[AnalyteRecord] = field(default_factory=list)
     forage_analyses: list[ForageAnalysisRecord] = field(default_factory=list)
     analysis_results: list[AnalysisResultRecord] = field(default_factory=list)
+    milk_samples: list[MilkSampleRecord] = field(default_factory=list)
+    milk_results: list[MilkResultRecord] = field(default_factory=list)
     rejects: list[Reject] = field(default_factory=list)

@@ -42,6 +42,11 @@ otro.
 - **Lote de animales** — el grupo al que se asigna una ración. La pertenencia de
   un animal a su lote y la ración que come un lote son **relaciones fechadas**,
   así que se puede responder qué comía un animal concreto en una fecha concreta.
+- **Muestra de leche del lote** — la analítica de la leche de un lote en una
+  fecha: perfil de ácidos grasos y antioxidantes liposolubles, colgando del mismo
+  par analito/resultado que el análisis NIR. Convive con el control lechero
+  individual porque responde a otra pregunta: la ración se asigna al lote, así
+  que es en el lote donde tratamiento y respuesta coinciden.
 
 Las reglas que no deben violarse nunca —un crotal no repetido dentro de la misma
 granja, un único registro de producción por animal y día, litros y porcentajes no
@@ -56,16 +61,15 @@ forrajes se sortea dentro de los rangos publicados en las tablas FEDNA para cada
 especie, así que ningún valor cae fuera de lo publicado. Todo se genera de forma
 reproducible mediante un comando de gestión, no con datos escritos a mano.
 
-Las reglas que no deben violarse nunca —un crotal no repetido dentro de la misma
-granja, un único registro de producción por animal y día, litros y porcentajes no
-negativos— se declaran como restricciones en la propia base de datos, de modo que
-también las respete cualquier carga masiva de datos.
-
-Los datos son **mockeados pero realistas**: la producción sigue la curva de
-lactación (pico tras el parto y descenso hasta el secado), con variación por raza
-y número de partos, caída estival por estrés térmico y casos borde deliberados
-(huecos, valores atípicos, nulos y bajas a mitad de serie). Se generan de forma
-reproducible mediante un comando de gestión, no con datos escritos a mano.
+> **Una advertencia que forma parte del producto:** el generador **planta a
+> propósito** una relación entre la composición de la ración y la calidad de la
+> leche del lote — un forraje con más hierba y menos maíz eleva el CLA, el ácido
+> α-linolénico, el β-caroteno y el α-tocoferol de la muestra. Existe para poder
+> recorrer la cadena entera de extremo a extremo; **no es un hallazgo y no puede
+> leerse como tal**. La dirección del efecto y el rango de cada analito están
+> tomados de literatura publicada y citada en `farms/services/milk_quality.py`,
+> que es el único módulo donde vive esa relación; la forma de la interpolación y
+> su amplitud son una construcción de este proyecto.
 
 ## Stack
 
@@ -80,10 +84,15 @@ reproducible mediante un comando de gestión, no con datos escritos a mano.
 - **La agregación se hace en el backend.** Medias, totales, rankings y alertas se
   calculan en el ORM y viajan ya resueltos; el frontend solo representa.
 - **Los datos entran por adaptadores de fuente,** uno por sistema de origen, y
-  salen todos con la misma forma canónica. Hoy son cuatro —robot de ordeño,
-  núcleo de control lechero, cuaderno de campo y laboratorio de análisis—, cada
-  uno con su formato, su manera de escribir una fecha, su codificación de lo no
-  medido y su vocabulario. El cargador recibe siempre la misma estructura y no
+  salen todos con la misma forma canónica. Hoy son cinco —robot de ordeño, núcleo
+  de control lechero, cuaderno de campo, laboratorio de análisis de forrajes y
+  laboratorio de análisis de leche—, cada uno con su formato, su manera de
+  escribir una fecha, su codificación de lo no medido y su vocabulario. Ni
+  siquiera coinciden en el grano: el robot entrega una fila por ordeño donde el
+  modelo guarda una por día, y el laboratorio de leche una tabla ancha con un
+  analito por columna donde el modelo guarda un resultado por analito, de modo
+  que reconciliarlo es trabajo del adaptador. El cargador recibe siempre la misma
+  estructura y no
   ramifica por origen: sustituir una fuente mockeada por una real es reescribir
   su adaptador, no el proyecto.
 - **Cada fila sabe de dónde vino.** Toda carga queda registrada con su fuente, su
@@ -136,13 +145,16 @@ Requisitos: Docker y Docker Compose.
    ventana por defecto es una fecha fija**, no el día de hoy; `--start` y `--end`
    la desplazan.
 
-   > **Resembrar sobre una base ya poblada solo es seguro con la misma ventana.**
+   > **Resembrar sobre una base ya poblada solo es seguro si nada ha cambiado.**
    > Los datos se escriben actualizando la fila existente en lugar de duplicarla,
    > pero eso funciona porque la fila se reconoce por su clave natural, y en los
-   > periodos con vigencia temporal esa clave incluye la fecha de inicio. Al
-   > mover la ventana, esas fechas se recalculan, las filas nuevas no reconocen a
-   > las viejas y la base rechaza la carga. Para sembrar otra ventana,
-   > `--clear`.
+   > periodos con vigencia temporal esa clave incluye la fecha de inicio. Si esas
+   > fechas se recalculan, las filas nuevas no reconocen a las viejas y la base
+   > rechaza la carga. Ocurre en dos casos: al **mover la ventana**, y al **tocar
+   > el generador**, porque cualquier cambio en cuántos números se piden al azar
+   > desplaza la secuencia entera y la misma semilla deja de producir las mismas
+   > fechas. En ambos hay que resembrar con `--clear`, y para eso está
+   > `make reseed`.
 
    No escribe en la base directamente: genera los datos, serializa la entrega que
    exportaría cada sistema de origen, se la pasa a su adaptador y carga el

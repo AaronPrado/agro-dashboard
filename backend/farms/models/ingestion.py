@@ -15,6 +15,7 @@ class SourceSystem(models.TextChoices):
     MILKING_ROBOT = "milking_robot", "Robot o sala de ordeño"
     MILK_RECORDING = "milk_recording", "Núcleo de control lechero"
     NIR_LAB = "nir_lab", "Laboratorio de análisis NIR"
+    MILK_LAB = "milk_lab", "Laboratorio de análisis de leche"
     FIELD_NOTEBOOK = "field_notebook", "Cuaderno de campo"
 
 

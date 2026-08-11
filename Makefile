@@ -4,7 +4,7 @@ SERVICE := web
 FRONTEND := frontend
 
 .DEFAULT_GOAL := help
-.PHONY: help build up up-d down logs migrate makemigrations shell lint format test seed lint-fix front-install front-dev front-lint front-build
+.PHONY: help build up up-d down logs migrate makemigrations shell lint format test seed reseed lint-fix front-install front-dev front-lint front-build
 
 help:  ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -50,6 +50,9 @@ test:  ## Ejecuta la batería de tests con pytest
 
 seed:  ## Puebla la BD con datos mockeados (disponible desde la Sesión 3)
 	$(COMPOSE) run --rm $(SERVICE) python manage.py seed
+
+reseed:  ## Vacía y vuelve a sembrar (obligatorio tras tocar el generador)
+	$(COMPOSE) run --rm $(SERVICE) python manage.py seed --clear
 
 front-install:  ## Instala las dependencias del cliente (host, no Docker)
 	cd $(FRONTEND) && npm install
