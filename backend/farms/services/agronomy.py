@@ -223,6 +223,10 @@ ANALYTES = (
     ("cenizas", "Cenizas", "% MS"),
 )
 
+# El almidón distingue el ensilado de maíz del de hierba: solo el maíz lo
+# determina. Es lo que permite estimar la composición del forraje de una ración.
+STARCH_ANALYTE = "almidon"
+
 # Rangos de composición por forraje, tomados de las tablas FEDNA de forrajes
 # (fundacionfedna.org): «Ensilado de maíz», «Ray-grass, silo» y «Hierba, silo».
 # Los extremos de cada rango son los de las clases de calidad que publica FEDNA,
