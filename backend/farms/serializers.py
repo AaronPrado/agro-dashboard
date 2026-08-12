@@ -205,9 +205,16 @@ class RationPeriodSerializer(serializers.Serializer):
     `starts_on`/`ends_on` son el recorte a la ventana y `date_from`/`date_to` el
     hecho. Viajan los dos: el cliente pinta la banda con los primeros sin dejar
     de saber que la ración empezó antes o que sigue vigente.
+
+    La ración viaja con su identificador y su fecha de formulación, y no solo
+    con el nombre: reformular crea una ración nueva en vez de editar la vigente,
+    así que una explotación acumula raciones homónimas de composición distinta y
+    el nombre no basta para distinguir una banda de la siguiente.
     """
 
     ration = serializers.CharField(source="ration.name", read_only=True)
+    ration_id = serializers.IntegerField(read_only=True)
+    formulated_on = serializers.DateField(source="ration.formulated_on", read_only=True)
     date_from = serializers.DateField(read_only=True)
     date_to = serializers.DateField(read_only=True, allow_null=True)
     starts_on = serializers.DateField(read_only=True)

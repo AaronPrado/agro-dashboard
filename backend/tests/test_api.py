@@ -21,6 +21,7 @@ from farms.models import (
     DailyYield,
     Farm,
     MilkRecord,
+    Ration,
     TargetProfile,
     TargetRange,
 )
@@ -521,6 +522,34 @@ def test_las_bandas_de_racion_llegan_recortadas_al_eje(api_client, lote_con_seri
     assert periodo["ends_on"] == "2026-03-03"
     assert periodo["date_from"] == "2026-01-01"
     assert periodo["date_to"] is None
+
+
+@pytest.mark.django_db
+def test_dos_raciones_homonimas_se_distinguen_en_la_banda(api_client, lote_con_serie, farm):
+    """El generador reformula cada pocos meses conservando el nombre.
+
+    Sin identidad ni fecha de formulación, el cliente recibiría bandas
+    indistinguibles y no podría enseñar que la composición cambió entre ellas,
+    que es justo lo que la gráfica del lote existe para contar.
+    """
+    otra = Ration.objects.create(
+        farm=farm,
+        name="Lactación alta",
+        formulated_on=datetime.date(2026, 3, 3),
+    )
+    BatchRation.objects.filter(batch=lote_con_serie).update(date_to=datetime.date(2026, 3, 2))
+    BatchRation.objects.create(
+        batch=lote_con_serie,
+        ration=otra,
+        date_from=datetime.date(2026, 3, 3),
+    )
+
+    body = api_client.get(reverse("farms:batch-timeline", args=[lote_con_serie.pk])).json()
+
+    bandas = body["ration_periods"]
+    assert [b["ration"] for b in bandas] == ["Lactación alta", "Lactación alta"]
+    assert len({b["ration_id"] for b in bandas}) == 2
+    assert [b["formulated_on"] for b in bandas] == ["2026-01-15", "2026-03-03"]
 
 
 @pytest.mark.django_db

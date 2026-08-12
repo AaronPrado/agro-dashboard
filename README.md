@@ -207,6 +207,7 @@ la interfaz navegable de DRF.
 | `/api/daily-yields/` | `animal`, `farm`, `date_from`, `date_to` | `date`, `liters` |
 | `/api/milk-records/` | `animal`, `farm`, `date_from`, `date_to` | `date`, `somatic_cell_count`, `fat_pct`, `protein_pct` |
 | `/api/batches/` | `farm` | `name`, `active_animals` |
+| `/api/target-profiles/` | — | `name`, `code` |
 | `/api/health/` | — | — |
 
 Notas sobre el contrato:
@@ -239,7 +240,7 @@ curl "http://localhost:8000/api/daily-yields/?farm=1&date_from=2026-01-01&date_t
 ### Endpoints agregados
 
 Las medias, los totales y los conteos se calculan en la base de datos y viajan ya
-resueltos, de modo que el cliente pinte sin cruzar series. Los dos aceptan
+resueltos, de modo que el cliente pinte sin cruzar series. Todos aceptan
 `date_from` y `date_to`, que acotan **las series fechadas, no el censo**:
 preguntar cuántos animales hay no es una pregunta con fecha.
 
@@ -247,6 +248,8 @@ preguntar cuántos animales hay no es una pregunta con fecha.
 |---|---|
 | `GET /api/farms/summary/` | Una fila por explotación. Paginado y filtrable por `province`, como el listado del que cuelga. |
 | `GET /api/batches/{id}/summary/` | Un objeto con el resumen de un lote, sin paginar. |
+| `GET /api/batches/{id}/timeline/` | Las tres series de un lote sobre un mismo eje temporal, sin paginar. |
+| `GET /api/batches/{id}/target-check/` | El lote frente a cada perfil de destino comercial, sin paginar. |
 
 El resumen por explotación trae `active_animals`, `total_liters`,
 `avg_daily_liters`, `avg_fat_pct`, `avg_protein_pct` y `scc_over_limit`, además
@@ -275,6 +278,81 @@ mismo salvo los identificadores, más `milk_records` y `milk_analytes`.
 
 ```bash
 curl "http://localhost:8000/api/batches/1/summary/?date_from=2026-01-01&date_to=2026-03-31"
+```
+
+#### La serie temporal de un lote
+
+`GET /api/batches/{id}/timeline/` devuelve en **una sola llamada** todo lo que
+necesita una gráfica del lote, ya casado por fecha. Cada serie conserva su grano
+propio, porque forzarlas a uno común obligaría a inventar una agregación que el
+dominio no tiene: la producción es diaria, la muestra de leche es un hecho
+puntual y la ración es un intervalo.
+
+- **`daily_yields`** — un punto por día, con `total_liters`, `avg_liters` y
+  `animals`. Este último es el censo que sostiene ese día: sin él, una caída del
+  total por bajas se leería como una caída de rendimiento.
+- **`milk_samples`** — una entrada por muestra, con sus analitos anidados en
+  `results`. Va por muestra y no por analito porque una muestra es un hecho
+  único con varios resultados.
+- **`ration_periods`** — los periodos de ración que solapan la ventana, con el
+  nombre de la ración, su identificador y su fecha de formulación. Los tres
+  hacen falta: una ración es una formulación cerrada —reformular es crear otra,
+  no editar esta—, así que una explotación acumula raciones homónimas con
+  composiciones distintas, y sin `ration_id` ni `formulated_on` sus bandas
+  serían indistinguibles. Traen además **cuatro fechas y no dos**:
+  `date_from`/`date_to` son las del periodo real, y
+  `starts_on`/`ends_on` las mismas recortadas al eje. Pintar un periodo como
+  banda exige dos fechas dentro del dominio del gráfico, y no las tiene ni el
+  que empezó antes de la ventana ni el que sigue vigente, cuyo `date_to` es
+  nulo. Recortarlas aquí es lo que evita que las calcule el cliente; conservar
+  las reales es lo que evita que la API afirme que la ración empezó el día en
+  que empieza la gráfica.
+- **`window`** — los extremos efectivos del eje, que son el primer y el último
+  día con producción del lote dentro del rango pedido. Es a esa ventana a la que
+  se han recortado los periodos, y por eso viaja: si el rango pedido es más
+  ancho que el dato disponible, manda el dato. Un lote sin producción en el rango
+  no tiene eje sobre el que dibujar, así que devuelve los periodos vacíos en vez
+  de devolverlos sin recortar.
+
+```bash
+curl "http://localhost:8000/api/batches/1/timeline/?date_from=2026-01-01&date_to=2026-06-30"
+```
+
+#### Perfiles de destino y comparación
+
+Un **perfil de destino comercial** describe qué leche pide un comprador, como
+rangos objetivo por analito. `GET /api/target-profiles/` publica el catálogo
+completo con sus umbrales, y `GET /api/batches/{id}/target-check/` compara un
+lote contra **todos** los perfiles a la vez: la pregunta útil no es si un lote
+aprueba un destino, sino a cuáles puede orientarse y de cuánto se queda corto en
+los demás.
+
+Cada analito del perfil sale con lo medido (`avg_value`, `samples`), lo exigido
+(`min_value`, `max_value`) y un `status` con cuatro valores: `within`, `below`,
+`above` y `no_data`.
+
+- **`no_data` no es `below`.** No haber medido un analito no es incumplirlo, la
+  misma distinción entre hueco y lectura ausente que gobierna el resto del
+  modelo. Por eso cada perfil trae dos conteos, `within_range` y `measured`: no
+  se puede cumplir lo que no se ha medido.
+- **No se emite un veredicto global de "apto".** Con datos sintéticos, un
+  booleano en pantalla afirmaría más de lo que estos datos sostienen. Viajan el
+  conteo y el detalle, y la lectura la hace quien mira.
+- **El resultado es relativo a la ventana, y la respuesta lo declara en
+  `target_check_notice`.** La ración de un lote cambia a lo largo del año y la
+  composición de su leche con ella, así que un resultado sin fechas promedia
+  regímenes distintos y no describe ninguno. Es la salvedad más importante de
+  este endpoint.
+- **Los umbrales son una interpretación de este proyecto, no un requisito de
+  ningún comprador real.** Un destino comercial se describe en el sector por
+  raza y manejo, no por umbrales analíticos. Los números no se inventan —cada
+  mínimo se deriva del rango publicado del analito, el mismo que acota lo que
+  puede medir una muestra—, pero qué fracción de ese rango exige cada perfil es
+  una decisión propia, y por eso el catálogo se publica: un criterio que no se
+  puede leer no se puede discutir.
+
+```bash
+curl "http://localhost:8000/api/batches/1/target-check/?date_from=2026-03-01&date_to=2026-05-31"
 ```
 
 ## Desarrollo
