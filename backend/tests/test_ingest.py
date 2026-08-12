@@ -6,12 +6,14 @@ que el diseño defiende.
 """
 
 import datetime
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
 
 from farms.models import (
     AnalysisResult,
+    Analyte,
     Animal,
     BatchMilkSample,
     DailyYield,
@@ -19,6 +21,8 @@ from farms.models import (
     IngestionReject,
     IngestionRun,
     SourceSystem,
+    TargetProfile,
+    TargetRange,
 )
 from farms.services.canonical import (
     AnalyteRecord,
@@ -32,7 +36,13 @@ from farms.services.canonical import (
     ProductionReading,
     Reject,
 )
-from farms.services.ingest import IngestionError, clear, load
+from farms.services.ingest import IngestionError, clear, load, load_target_profiles
+from farms.services.milk_quality import MILK_ANALYTES
+from farms.services.target_profiles import (
+    TARGET_PROFILES,
+    TargetProfileSpec,
+    minimum_values,
+)
 
 FARM_CODE = "casa-grande"
 EAR_TAG = "ES221100010001"
@@ -336,3 +346,109 @@ def test_un_resultado_sin_su_muestra_aborta_la_entrega():
         load(batch)
 
     assert AnalysisResult.objects.count() == 0
+
+
+# --- El catálogo de perfiles de destino ---
+
+TOTAL_RANGES = sum(len(spec.demands) for spec in TARGET_PROFILES)
+
+
+def _milk_analytes() -> None:
+    """Siembra el catálogo de analitos de leche, que es quien define los códigos.
+
+    Se crean directamente y no por una entrega: lo que se prueba aquí es el
+    cargador del catálogo comercial, no cómo llegan los analitos.
+    """
+    for code, name, unit in MILK_ANALYTES:
+        Analyte.objects.create(code=code, name=name, unit=unit)
+
+
+def _spec(code: str) -> TargetProfileSpec:
+    return next(spec for spec in TARGET_PROFILES if spec.code == code)
+
+
+@pytest.mark.django_db
+def test_los_perfiles_de_destino_se_cargan_con_sus_rangos():
+    _milk_analytes()
+
+    summary = load_target_profiles()
+
+    assert summary.target_profiles == len(TARGET_PROFILES)
+    assert summary.target_ranges == TOTAL_RANGES
+    assert TargetProfile.objects.count() == len(TARGET_PROFILES)
+    assert TargetRange.objects.count() == TOTAL_RANGES
+
+
+@pytest.mark.django_db
+def test_el_catalogo_de_perfiles_no_abre_una_carga():
+    """Nadie lo entrega, así que no hay procedencia que registrar."""
+    _milk_analytes()
+
+    load_target_profiles()
+
+    assert IngestionRun.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_los_umbrales_llegan_a_la_base_como_minimos_sin_techo():
+    """El catálogo solo pone suelos: un techo sería una exigencia inventada."""
+    _milk_analytes()
+
+    load_target_profiles()
+
+    rango = TargetRange.objects.get(profile__code="queso-azul-artesano", analyte__code="cla")
+    assert rango.min_value == minimum_values(_spec("queso-azul-artesano"))["cla"]
+    assert rango.max_value is None
+    assert not TargetRange.objects.filter(max_value__isnull=False).exists()
+
+
+@pytest.mark.django_db
+def test_resembrar_el_catalogo_actualiza_en_vez_de_duplicar():
+    _milk_analytes()
+    load_target_profiles()
+
+    load_target_profiles()
+
+    assert TargetProfile.objects.count() == len(TARGET_PROFILES)
+    assert TargetRange.objects.count() == TOTAL_RANGES
+
+
+@pytest.mark.django_db
+def test_un_perfil_que_deja_de_exigir_un_analito_pierde_su_rango():
+    """El upsert actualiza lo que sigue estando; retirar lo que sobra es aparte."""
+    _milk_analytes()
+    completo = TargetProfileSpec(
+        code="ejemplo",
+        name="Perfil de ejemplo",
+        description="Solo para el test.",
+        demands={"cla": Decimal("0.50"), "omega3": Decimal("0.50")},
+    )
+    load_target_profiles([completo])
+
+    load_target_profiles([replace(completo, demands={"cla": Decimal("0.50")})])
+
+    rangos = TargetRange.objects.filter(profile__code="ejemplo")
+    assert [rango.analyte.code for rango in rangos] == ["cla"]
+
+
+@pytest.mark.django_db
+def test_un_perfil_sobre_un_analito_desconocido_aborta_el_catalogo():
+    """Mismo criterio que el resto del cargador: clave que no casa, no se carga a medias."""
+    with pytest.raises(IngestionError, match="analitos no registrados"):
+        load_target_profiles()
+
+    assert TargetProfile.objects.count() == 0
+    assert TargetRange.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_clear_se_lleva_los_perfiles_y_libera_el_catalogo_de_analitos():
+    """`TargetRange.analyte` es PROTECT: sin quitar antes los perfiles, `Analyte` no cae."""
+    _milk_analytes()
+    load_target_profiles()
+
+    clear()
+
+    assert TargetProfile.objects.count() == 0
+    assert TargetRange.objects.count() == 0
+    assert Analyte.objects.count() == 0

@@ -1,6 +1,7 @@
 """Vistas de la app farms."""
 
 from django.db import connection
+from django.db.models import Prefetch
 from django.db.utils import OperationalError
 from django.http import HttpRequest, JsonResponse
 from rest_framework import viewsets
@@ -9,18 +10,27 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from farms.filters import AnimalFilter, DailyYieldFilter, MilkRecordFilter
-from farms.models import Animal, DailyYield, Farm, MilkRecord
+from farms.models import Animal, DailyYield, Farm, MilkRecord, TargetProfile, TargetRange
 from farms.serializers import (
     AnimalBatchSerializer,
     AnimalSerializer,
     BatchSummarySerializer,
+    BatchTargetCheckSerializer,
+    BatchTimelineSerializer,
     DailyYieldSerializer,
     DateWindowSerializer,
     FarmSerializer,
     FarmSummarySerializer,
     MilkRecordSerializer,
+    TargetProfileSerializer,
 )
-from farms.services.aggregation import batch_list, batch_summary, farm_summaries
+from farms.services.aggregation import (
+    batch_list,
+    batch_summary,
+    batch_target_check,
+    batch_timeline,
+    farm_summaries,
+)
 
 
 def health(request: HttpRequest) -> JsonResponse:
@@ -103,3 +113,42 @@ class AnimalBatchViewSet(viewsets.ReadOnlyModelViewSet):
         window.is_valid(raise_exception=True)
         summary = batch_summary(self.get_object(), **window.validated_data)
         return Response(BatchSummarySerializer(summary).data)
+
+    @action(detail=True)
+    def timeline(self, request: Request, pk: str | None = None) -> Response:
+        """Serie temporal del lote: producción, calidad y periodos de ración.
+
+        Una sola llamada trae lo que la gráfica necesita, ya casado por fecha:
+        el cliente superpone capas sobre un mismo eje, no cruza series.
+        """
+        window = DateWindowSerializer(data=request.query_params)
+        window.is_valid(raise_exception=True)
+        timeline = batch_timeline(self.get_object(), **window.validated_data)
+        return Response(BatchTimelineSerializer(timeline).data)
+
+    @action(detail=True, url_path="target-check")
+    def target_check(self, request: Request, pk: str | None = None) -> Response:
+        """El lote frente a cada perfil de destino comercial del catálogo.
+
+        El `url_path` explícito es lo que da `/target-check/` con guion: por
+        defecto la ruta sería el nombre del método, con su guion bajo.
+        """
+        window = DateWindowSerializer(data=request.query_params)
+        window.is_valid(raise_exception=True)
+        check = batch_target_check(self.get_object(), **window.validated_data)
+        return Response(BatchTargetCheckSerializer(check).data)
+
+
+class TargetProfileViewSet(viewsets.ReadOnlyModelViewSet):
+    """Consulta del catálogo de perfiles de destino comercial.
+
+    Que los umbrales se puedan leer es parte de declararlos: son interpretación
+    de esta propuesta, y un criterio que no se puede consultar no se puede
+    discutir.
+    """
+
+    queryset = TargetProfile.objects.prefetch_related(
+        Prefetch("ranges", queryset=TargetRange.objects.select_related("analyte"))
+    )
+    serializer_class = TargetProfileSerializer
+    ordering_fields = ["name", "code"]

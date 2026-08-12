@@ -14,14 +14,26 @@ import pytest
 
 from farms.models import (
     AnalysisResult,
+    Analyte,
     Animal,
     AnimalBatchMembership,
     BatchMilkSample,
+    BatchRation,
     DailyYield,
     Farm,
     MilkRecord,
+    TargetProfile,
+    TargetRange,
 )
-from farms.services.aggregation import batch_summary, farm_summaries
+from farms.services.aggregation import (
+    batch_daily_yields,
+    batch_milk_samples,
+    batch_ration_periods,
+    batch_summary,
+    batch_target_check,
+    batch_timeline,
+    farm_summaries,
+)
 
 
 @pytest.fixture
@@ -391,3 +403,381 @@ def test_la_ventana_acota_los_analitos_por_la_fecha_de_la_muestra(batch, analyte
     analitos = list(batch_summary(batch, date_from=datetime.date(2026, 6, 1))["milk_analytes"])
 
     assert analitos == []
+
+
+# --- La serie temporal del lote ---
+
+
+def _segundo_animal(farm) -> Animal:
+    return Animal.objects.create(
+        farm=farm,
+        ear_tag="ES221100010002",
+        birth_date=datetime.date(2021, 3, 1),
+    )
+
+
+@pytest.mark.django_db
+def test_la_serie_diaria_solo_cubre_los_dias_de_pertenencia(lote_poblado):
+    """El día 3 el animal producía, pero todavía no para este lote."""
+    serie = list(batch_daily_yields(lote_poblado))
+
+    assert [punto["date"].day for punto in serie] == [5, 7]
+    assert [punto["total_liters"] for punto in serie] == [Decimal("20.00"), Decimal("30.00")]
+
+
+@pytest.mark.django_db
+def test_la_serie_agrupa_por_dia_y_no_por_animal(batch, animal, farm):
+    """`DailyYield` ordena por `-date, animal`, y ese orden entra en el GROUP BY.
+
+    Sin limpiarlo, dos vacas del mismo día saldrían como dos puntos de la serie
+    en vez de sumarse en uno.
+    """
+    otro = _segundo_animal(farm)
+    dia = datetime.date(2026, 3, 5)
+    for vaca, liters in ((animal, "20.00"), (otro, "30.00")):
+        AnimalBatchMembership.objects.create(animal=vaca, batch=batch, date_from=dia)
+        DailyYield.objects.create(animal=vaca, date=dia, liters=Decimal(liters))
+
+    serie = list(batch_daily_yields(batch))
+
+    assert len(serie) == 1
+    assert serie[0]["total_liters"] == Decimal("50.00")
+    assert serie[0]["avg_liters"] == Decimal("25")
+    assert serie[0]["animals"] == 2
+
+
+@pytest.mark.django_db
+def test_la_serie_declara_cuantos_animales_sostienen_cada_dia(lote_poblado):
+    """Sin el censo diario, una caída por bajas se leería como una de rendimiento."""
+    serie = list(batch_daily_yields(lote_poblado))
+
+    assert [punto["animals"] for punto in serie] == [1, 1]
+
+
+@pytest.mark.django_db
+def test_la_serie_diaria_va_hacia_adelante(lote_poblado):
+    """El `Meta` del modelo ordena de más reciente a más antigua; una serie no."""
+    serie = list(batch_daily_yields(lote_poblado))
+
+    assert [punto["date"] for punto in serie] == sorted(punto["date"] for punto in serie)
+
+
+@pytest.mark.django_db
+def test_la_ventana_acota_la_serie_diaria(lote_poblado):
+    serie = list(batch_daily_yields(lote_poblado, date_from=datetime.date(2026, 3, 6)))
+
+    assert [punto["date"].day for punto in serie] == [7]
+
+
+@pytest.mark.django_db
+def test_las_muestras_de_leche_traen_sus_analitos(batch, analyte, milk_sample):
+    AnalysisResult.objects.create(
+        milk_sample=milk_sample, analyte=analyte, value=Decimal("35.0000")
+    )
+
+    muestras = list(batch_milk_samples(batch))
+
+    assert len(muestras) == 1
+    resultados = list(muestras[0].results.all())
+    assert [(r.analyte.code, r.value) for r in resultados] == [("dry-matter", Decimal("35.0000"))]
+
+
+@pytest.mark.django_db
+def test_las_muestras_van_de_mas_antigua_a_mas_reciente(batch, milk_sample):
+    """`BatchMilkSample.Meta` ordena por `-date`: una serie temporal no puede."""
+    BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 1, 10))
+
+    fechas = [muestra.date for muestra in batch_milk_samples(batch)]
+
+    assert fechas == sorted(fechas)
+
+
+@pytest.mark.django_db
+def test_la_ventana_acota_las_muestras_por_su_fecha(batch, milk_sample):
+    BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 1, 10))
+
+    muestras = list(batch_milk_samples(batch, date_from=datetime.date(2026, 2, 1)))
+
+    assert [muestra.date for muestra in muestras] == [datetime.date(2026, 2, 10)]
+
+
+@pytest.mark.django_db
+def test_las_muestras_no_consultan_una_vez_por_resultado(
+    batch, analyte, milk_sample, django_assert_num_queries
+):
+    """El `prefetch_related` fija el coste: dos consultas, haya las muestras que haya."""
+    AnalysisResult.objects.create(
+        milk_sample=milk_sample, analyte=analyte, value=Decimal("35.0000")
+    )
+    otra = BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 1, 10))
+    AnalysisResult.objects.create(milk_sample=otra, analyte=analyte, value=Decimal("31.0000"))
+
+    with django_assert_num_queries(2):
+        [list(muestra.results.all()) for muestra in batch_milk_samples(batch)]
+
+
+# --- Los periodos de ración, recortados a la ventana ---
+
+
+@pytest.fixture
+def racion_larga(batch, ration):
+    """Un periodo que empieza antes de cualquier ventana y sigue vigente."""
+    return BatchRation.objects.create(
+        batch=batch,
+        ration=ration,
+        date_from=datetime.date(2026, 1, 1),
+    )
+
+
+@pytest.mark.django_db
+def test_un_periodo_que_empieza_antes_se_recorta_al_inicio_de_la_ventana(racion_larga):
+    """La banda no puede arrancar fuera del eje que va a pintarse."""
+    periodo = batch_ration_periods(
+        racion_larga.batch,
+        datetime.date(2026, 3, 1),
+        datetime.date(2026, 3, 31),
+    ).get()
+
+    assert periodo.starts_on == datetime.date(2026, 3, 1)
+    assert periodo.date_from == datetime.date(2026, 1, 1)
+
+
+@pytest.mark.django_db
+def test_un_periodo_vigente_se_cierra_en_el_fin_de_la_ventana(racion_larga):
+    """`date_to` nulo no es una fecha, y una banda necesita dos."""
+    periodo = batch_ration_periods(
+        racion_larga.batch,
+        datetime.date(2026, 3, 1),
+        datetime.date(2026, 3, 31),
+    ).get()
+
+    assert periodo.ends_on == datetime.date(2026, 3, 31)
+    assert periodo.date_to is None
+
+
+@pytest.mark.django_db
+def test_un_periodo_contenido_en_la_ventana_no_se_toca(batch, ration):
+    BatchRation.objects.create(
+        batch=batch,
+        ration=ration,
+        date_from=datetime.date(2026, 3, 10),
+        date_to=datetime.date(2026, 3, 20),
+    )
+
+    periodo = batch_ration_periods(
+        batch, datetime.date(2026, 3, 1), datetime.date(2026, 3, 31)
+    ).get()
+
+    assert periodo.starts_on == datetime.date(2026, 3, 10)
+    assert periodo.ends_on == datetime.date(2026, 3, 20)
+
+
+@pytest.mark.django_db
+def test_un_periodo_anterior_a_la_ventana_no_aparece(batch, ration):
+    """Solape, no pertenencia: lo que acabó antes de empezar la gráfica no se pinta."""
+    BatchRation.objects.create(
+        batch=batch,
+        ration=ration,
+        date_from=datetime.date(2026, 1, 1),
+        date_to=datetime.date(2026, 2, 1),
+    )
+
+    periodos = batch_ration_periods(batch, datetime.date(2026, 3, 1), datetime.date(2026, 3, 31))
+
+    assert list(periodos) == []
+
+
+@pytest.mark.django_db
+def test_un_periodo_posterior_a_la_ventana_no_aparece(batch, ration):
+    BatchRation.objects.create(
+        batch=batch,
+        ration=ration,
+        date_from=datetime.date(2026, 5, 1),
+    )
+
+    periodos = batch_ration_periods(batch, datetime.date(2026, 3, 1), datetime.date(2026, 3, 31))
+
+    assert list(periodos) == []
+
+
+@pytest.mark.django_db
+def test_un_periodo_que_solo_toca_el_extremo_de_la_ventana_sigue_contando(batch, ration):
+    """Los intervalos son cerrados: compartir un solo día ya es solape."""
+    BatchRation.objects.create(
+        batch=batch,
+        ration=ration,
+        date_from=datetime.date(2026, 1, 1),
+        date_to=datetime.date(2026, 3, 1),
+    )
+
+    periodo = batch_ration_periods(
+        batch, datetime.date(2026, 3, 1), datetime.date(2026, 3, 31)
+    ).get()
+
+    assert periodo.starts_on == periodo.ends_on == datetime.date(2026, 3, 1)
+
+
+# --- El ensamblado de la serie ---
+
+
+@pytest.mark.django_db
+def test_la_serie_completa_trae_las_tres_colecciones_y_su_ventana(lote_poblado, ration):
+    BatchRation.objects.create(
+        batch=lote_poblado,
+        ration=ration,
+        date_from=datetime.date(2026, 1, 1),
+    )
+
+    timeline = batch_timeline(lote_poblado)
+
+    assert timeline["window"] == {
+        "date_from": datetime.date(2026, 3, 5),
+        "date_to": datetime.date(2026, 3, 7),
+    }
+    assert len(timeline["daily_yields"]) == 2
+    assert [p.starts_on for p in timeline["ration_periods"]] == [datetime.date(2026, 3, 5)]
+    assert [p.ends_on for p in timeline["ration_periods"]] == [datetime.date(2026, 3, 7)]
+
+
+@pytest.mark.django_db
+def test_la_ventana_efectiva_sale_de_la_produccion_y_no_de_lo_pedido(lote_poblado):
+    """Se pide marzo entero y el lote solo tiene datos del 5 al 7: manda el dato."""
+    timeline = batch_timeline(
+        lote_poblado,
+        date_from=datetime.date(2026, 3, 1),
+        date_to=datetime.date(2026, 3, 31),
+    )
+
+    assert timeline["window"]["date_from"] == datetime.date(2026, 3, 5)
+    assert timeline["window"]["date_to"] == datetime.date(2026, 3, 7)
+
+
+@pytest.mark.django_db
+def test_un_lote_sin_produccion_no_devuelve_bandas_sin_recortar(batch, ration):
+    """Sin eje temporal no hay dónde dibujar, y un periodo a medio recortar engaña."""
+    BatchRation.objects.create(batch=batch, ration=ration, date_from=datetime.date(2026, 1, 1))
+
+    timeline = batch_timeline(batch)
+
+    assert list(timeline["daily_yields"]) == []
+    assert list(timeline["ration_periods"]) == []
+
+
+@pytest.mark.django_db
+def test_la_serie_completa_declara_que_los_analitos_son_sinteticos(lote_poblado):
+    """Es el endpoint que más enseña el efecto plantado: callarlo aquí sería peor."""
+    assert "sintéticos" in batch_timeline(lote_poblado)["milk_analytes_notice"]
+
+
+# --- La comparación contra los perfiles de destino ---
+
+
+@pytest.fixture
+def perfil(analyte):
+    """Un destino que exige al menos 30 de materia seca, sin techo."""
+    profile = TargetProfile.objects.create(code="destino", name="Destino de ejemplo")
+    TargetRange.objects.create(profile=profile, analyte=analyte, min_value=Decimal("30.0000"))
+    return profile
+
+
+def _muestra(batch, analyte, dia: int, valor: str) -> None:
+    muestra = BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 3, dia))
+    AnalysisResult.objects.create(milk_sample=muestra, analyte=analyte, value=Decimal(valor))
+
+
+def _analito(resultado: dict, code: str = "destino") -> dict:
+    return next(p for p in resultado["profiles"] if p["code"] == code)["analytes"][0]
+
+
+@pytest.mark.django_db
+def test_una_media_por_encima_del_minimo_cumple(batch, analyte, perfil):
+    _muestra(batch, analyte, 2, "35.0000")
+
+    analito = _analito(batch_target_check(batch))
+
+    assert analito["status"] == "within"
+    assert analito["avg_value"] == Decimal("35.0000")
+    assert analito["samples"] == 1
+
+
+@pytest.mark.django_db
+def test_una_media_por_debajo_del_minimo_se_queda_corta(batch, analyte, perfil):
+    _muestra(batch, analyte, 2, "25.0000")
+
+    assert _analito(batch_target_check(batch))["status"] == "below"
+
+
+@pytest.mark.django_db
+def test_una_media_por_encima_del_maximo_se_pasa(batch, analyte, perfil):
+    """El catálogo solo pone suelos, pero el modelo admite techos y se respetan."""
+    perfil.ranges.update(max_value=Decimal("32.0000"))
+    _muestra(batch, analyte, 2, "35.0000")
+
+    assert _analito(batch_target_check(batch))["status"] == "above"
+
+
+@pytest.mark.django_db
+def test_un_lote_sin_muestras_no_incumple_nada(batch, perfil):
+    """No haber medido no es quedarse corto: es no saberlo."""
+    analito = _analito(batch_target_check(batch))
+
+    assert analito["status"] == "no_data"
+    assert analito["avg_value"] is None
+    assert analito["samples"] == 0
+
+
+@pytest.mark.django_db
+def test_el_veredicto_depende_de_la_ventana(batch, analyte, perfil):
+    """El caso que da sentido al endpoint y al aviso que lo acompaña.
+
+    El mismo lote cumple en marzo y no cumple en abril, porque entremedias
+    cambió lo que comía. Un veredicto sin fechas promedia los dos regímenes y no
+    describe ninguno.
+    """
+    _muestra(batch, analyte, 2, "40.0000")
+    muestra = BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 4, 2))
+    AnalysisResult.objects.create(milk_sample=muestra, analyte=analyte, value=Decimal("20.0000"))
+
+    marzo = _analito(batch_target_check(batch, date_to=datetime.date(2026, 3, 31)))
+    abril = _analito(batch_target_check(batch, date_from=datetime.date(2026, 4, 1)))
+    entero = _analito(batch_target_check(batch))
+
+    assert marzo["status"] == "within"
+    assert abril["status"] == "below"
+    assert entero["avg_value"] == Decimal("30")
+
+
+@pytest.mark.django_db
+def test_los_conteos_separan_lo_cumplido_de_lo_medido(batch, analyte, perfil):
+    """`measured` es el denominador honesto: no se puede cumplir lo que no se midió."""
+    otro = Analyte.objects.create(code="grasa", name="Grasa", unit="%")
+    TargetRange.objects.create(profile=perfil, analyte=otro, min_value=Decimal("3.5000"))
+    _muestra(batch, analyte, 2, "35.0000")
+
+    resultado = next(p for p in batch_target_check(batch)["profiles"] if p["code"] == "destino")
+
+    assert len(resultado["analytes"]) == 2
+    assert resultado["within_range"] == 1
+    assert resultado["measured"] == 1
+
+
+@pytest.mark.django_db
+def test_se_devuelven_todos_los_perfiles_y_no_solo_los_cumplidos(batch, analyte, perfil):
+    """La pregunta es a qué destinos puede ir esta leche, no si aprueba uno."""
+    exigente = TargetProfile.objects.create(code="exigente", name="Destino exigente")
+    TargetRange.objects.create(profile=exigente, analyte=analyte, min_value=Decimal("99.0000"))
+    _muestra(batch, analyte, 2, "35.0000")
+
+    resultado = batch_target_check(batch)
+
+    assert {p["code"] for p in resultado["profiles"]} == {"destino", "exigente"}
+    assert _analito(resultado, "exigente")["status"] == "below"
+
+
+@pytest.mark.django_db
+def test_la_comparacion_declara_que_depende_de_la_ventana_y_del_dato(batch, perfil):
+    resultado = batch_target_check(batch)
+
+    assert "ventana" in resultado["target_check_notice"]
+    assert "interpretación" in resultado["target_check_notice"]
+    assert "sintéticos" in resultado["milk_analytes_notice"]
