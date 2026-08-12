@@ -206,6 +206,7 @@ la interfaz navegable de DRF.
 | `/api/animals/` | `farm`, `breed`, `active` | `ear_tag`, `birth_date`, `lactation_number` |
 | `/api/daily-yields/` | `animal`, `farm`, `date_from`, `date_to` | `date`, `liters` |
 | `/api/milk-records/` | `animal`, `farm`, `date_from`, `date_to` | `date`, `somatic_cell_count`, `fat_pct`, `protein_pct` |
+| `/api/batches/` | `farm` | `name`, `active_animals` |
 | `/api/health/` | — | — |
 
 Notas sobre el contrato:
@@ -233,6 +234,47 @@ Ejemplo:
 
 ```bash
 curl "http://localhost:8000/api/daily-yields/?farm=1&date_from=2026-01-01&date_to=2026-01-31&page_size=5"
+```
+
+### Endpoints agregados
+
+Las medias, los totales y los conteos se calculan en la base de datos y viajan ya
+resueltos, de modo que el cliente pinte sin cruzar series. Los dos aceptan
+`date_from` y `date_to`, que acotan **las series fechadas, no el censo**:
+preguntar cuántos animales hay no es una pregunta con fecha.
+
+| Endpoint | Qué devuelve |
+|---|---|
+| `GET /api/farms/summary/` | Una fila por explotación. Paginado y filtrable por `province`, como el listado del que cuelga. |
+| `GET /api/batches/{id}/summary/` | Un objeto con el resumen de un lote, sin paginar. |
+
+El resumen por explotación trae `active_animals`, `total_liters`,
+`avg_daily_liters`, `avg_fat_pct`, `avg_protein_pct` y `scc_over_limit`, además
+del identificador, el nombre, el código y la provincia. El del lote trae lo
+mismo salvo los identificadores, más `milk_records` y `milk_analytes`.
+
+- **`scc_over_limit` cuenta los controles lecheros que superan el límite legal**
+  de células somáticas en leche cruda de vaca —400.000 células/ml, Reglamento
+  (CE) 853/2004—. El umbral procede del Reglamento, pero el modo en que el
+  control oficial agrega las medidas queda fuera del alcance de este proyecto:
+  esto es un conteo de controles individuales dentro del rango pedido, es decir
+  **una señal de alerta y no una medida de incumplimiento legal**.
+- **Cuando no hay ninguna medida en el rango, cada resumen lo dice a su manera:**
+  el de explotación devuelve `null` en las métricas, incluida `scc_over_limit`;
+  el de lote devuelve `0` y declara el denominador en `milk_records`. Un cero sin
+  denominador se leería como "ninguno supera el límite" cuando lo cierto es "no
+  se midió".
+- **El resumen del lote solo cuenta los días en que cada animal pertenecía a él.**
+  Preguntarle a un lote qué produjo en marzo es preguntar por quienes lo
+  formaban en marzo, no por quienes están hoy.
+- **`milk_analytes`** es el perfil extendido de las muestras de leche del lote
+  —una entrada por analito, con su unidad, su media y sobre cuántas muestras se
+  calcula—. La respuesta incluye `milk_analytes_notice`, que declara que esos
+  valores llevan plantada a propósito la relación con la ración descrita más
+  arriba: la advertencia viaja con el dato para que no pueda separarse de él.
+
+```bash
+curl "http://localhost:8000/api/batches/1/summary/?date_from=2026-01-01&date_to=2026-03-31"
 ```
 
 ## Desarrollo
