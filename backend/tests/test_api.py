@@ -11,7 +11,16 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 
-from farms.models import Animal, DailyYield
+from farms.models import (
+    AnalysisResult,
+    Animal,
+    AnimalBatch,
+    AnimalBatchMembership,
+    BatchRation,
+    DailyYield,
+    Farm,
+    MilkRecord,
+)
 
 
 @pytest.fixture
@@ -33,7 +42,13 @@ def test_la_raiz_de_la_api_lista_los_recursos(api_client):
     response = api_client.get(reverse("farms:api-root"))
 
     assert response.status_code == 200
-    assert set(response.json()) == {"farms", "animals", "daily-yields", "milk-records"}
+    assert set(response.json()) == {
+        "farms",
+        "animals",
+        "daily-yields",
+        "milk-records",
+        "batches",
+    }
 
 
 @pytest.mark.django_db
@@ -149,3 +164,279 @@ def test_el_health_check_sigue_respondiendo_fuera_del_router(api_client):
     response = api_client.get(reverse("farms:health"))
 
     assert response.status_code == 200
+
+
+@pytest.fixture
+def produccion_y_control(animal):
+    """Un día de producción y un control, para ejercitar el resumen agregado."""
+    DailyYield.objects.create(
+        animal=animal,
+        date=datetime.date(2026, 3, 1),
+        liters=Decimal("30.00"),
+    )
+    MilkRecord.objects.create(
+        animal=animal,
+        date=datetime.date(2026, 3, 1),
+        fat_pct=Decimal("4.00"),
+        protein_pct=Decimal("3.20"),
+        somatic_cell_count=500_000,
+    )
+    return animal
+
+
+@pytest.mark.django_db
+def test_el_resumen_por_explotacion_llega_paginado(api_client, produccion_y_control):
+    """La acción agregada conserva el sobre de paginación del resto de la API."""
+    response = api_client.get(reverse("farms:farm-summary"))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"count", "next", "previous", "results"}
+    assert body["results"][0]["total_liters"] == "30.00"
+    assert body["results"][0]["active_animals"] == 1
+    assert body["results"][0]["scc_over_limit"] == 1
+
+
+@pytest.mark.django_db
+def test_el_resumen_cuantiza_las_medias_a_dos_decimales(api_client, produccion_y_control):
+    """La media de Postgres llega con dieciséis decimales y el serializer la recorta."""
+    response = api_client.get(reverse("farms:farm-summary"))
+
+    resumen = response.json()["results"][0]
+    assert resumen["avg_fat_pct"] == "4.00"
+    assert resumen["avg_protein_pct"] == "3.20"
+
+
+@pytest.mark.django_db
+def test_el_rango_de_fechas_acota_el_resumen(api_client, produccion_y_control):
+    """Fuera de la ventana no hay medidas, y las métricas viajan nulas."""
+    response = api_client.get(
+        reverse("farms:farm-summary"),
+        {"date_from": "2026-04-01"},
+    )
+
+    resumen = response.json()["results"][0]
+    assert resumen["total_liters"] is None
+    assert resumen["avg_fat_pct"] is None
+    # El censo no depende de la ventana: la explotación sigue teniendo su vaca.
+    assert resumen["active_animals"] == 1
+
+
+@pytest.mark.django_db
+def test_una_fecha_malformada_da_400(api_client, farm):
+    """El parámetro se valida: no se ignora ni revienta con un 500."""
+    response = api_client.get(reverse("farms:farm-summary"), {"date_from": "ayer"})
+
+    assert response.status_code == 400
+    assert "date_from" in response.json()
+
+
+@pytest.mark.django_db
+def test_un_rango_invertido_da_400(api_client, farm):
+    """Un rango imposible es un error del cliente, no un resumen vacío."""
+    response = api_client.get(
+        reverse("farms:farm-summary"),
+        {"date_from": "2026-03-10", "date_to": "2026-03-01"},
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_el_resumen_no_se_confunde_con_el_detalle(api_client, farm):
+    """`/farms/summary/` es la acción, no una explotación con pk "summary"."""
+    response = api_client.get("/api/farms/summary/")
+
+    assert response.status_code == 200
+    assert "results" in response.json()
+
+
+@pytest.mark.django_db
+def test_el_filtro_de_provincia_sigue_aplicando_sobre_el_resumen(api_client, farm):
+    """Filtrar filas y parametrizar columnas son cosas ortogonales y conviven."""
+    Farm.objects.create(
+        name="Souto Vello",
+        code="souto-vello",
+        municipality="Ourense",
+        province="Ourense",
+    )
+
+    response = api_client.get(reverse("farms:farm-summary"), {"province": "Lugo"})
+
+    body = response.json()
+    assert body["count"] == 1
+    assert body["results"][0]["code"] == "casa-grande"
+
+
+@pytest.mark.django_db
+def test_el_listado_de_lotes_cuenta_solo_las_pertenencias_vigentes(api_client, batch, animal, farm):
+    """El censo del lote son sus miembros de hoy, no todos los que pasaron por él."""
+    AnimalBatchMembership.objects.create(
+        animal=animal,
+        batch=batch,
+        date_from=datetime.date(2026, 1, 1),
+    )
+    antiguo = Animal.objects.create(
+        farm=farm,
+        ear_tag="ES221100010009",
+        birth_date=datetime.date(2020, 1, 1),
+    )
+    AnimalBatchMembership.objects.create(
+        animal=antiguo,
+        batch=batch,
+        date_from=datetime.date(2025, 1, 1),
+        date_to=datetime.date(2025, 12, 31),
+    )
+
+    response = api_client.get(reverse("farms:batch-list"))
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["active_animals"] == 1
+
+
+@pytest.mark.django_db
+def test_el_listado_de_lotes_trae_la_racion_vigente(api_client, batch, ration):
+    """La ración que come el lote es la del periodo abierto."""
+    BatchRation.objects.create(
+        batch=batch,
+        ration=ration,
+        date_from=datetime.date(2026, 2, 1),
+    )
+
+    response = api_client.get(reverse("farms:batch-list"))
+
+    assert response.json()["results"][0]["current_ration"] == "Lactación alta"
+
+
+@pytest.mark.django_db
+def test_un_lote_sin_racion_asignada_no_inventa_ninguna(api_client, batch, ration):
+    """Un periodo cerrado no es la ración vigente: el campo viaja nulo."""
+    BatchRation.objects.create(
+        batch=batch,
+        ration=ration,
+        date_from=datetime.date(2025, 1, 1),
+        date_to=datetime.date(2025, 6, 30),
+    )
+
+    response = api_client.get(reverse("farms:batch-list"))
+
+    assert response.json()["results"][0]["current_ration"] is None
+
+
+@pytest.mark.django_db
+def test_el_listado_de_lotes_se_filtra_por_explotacion(api_client, batch, farm):
+    """El lote pertenece a una explotación y el listado se acota por ella."""
+    otra = Farm.objects.create(
+        name="Souto Vello",
+        code="souto-vello",
+        municipality="Chantada",
+        province="Lugo",
+    )
+    AnimalBatch.objects.create(farm=otra, name="Secas")
+
+    response = api_client.get(reverse("farms:batch-list"), {"farm": farm.pk})
+
+    body = response.json()
+    assert body["count"] == 1
+    assert body["results"][0]["name"] == "Alta producción"
+
+
+@pytest.mark.django_db
+def test_una_pagina_de_lotes_no_dispara_consultas_por_fila(
+    api_client, batch, farm, django_assert_num_queries
+):
+    """El `select_related` y las anotaciones evitan una consulta por lote."""
+    for name in ("Secas", "Novillas"):
+        AnimalBatch.objects.create(farm=farm, name=name)
+
+    # Dos consultas fijas: el recuento de la paginación y la página en sí.
+    with django_assert_num_queries(2):
+        response = api_client.get(reverse("farms:batch-list"))
+        assert len(response.json()["results"]) == 3
+
+
+@pytest.mark.django_db
+def test_los_lotes_son_de_solo_lectura(api_client, farm):
+    """Los datos entran por la capa de ingesta, no por HTTP."""
+    response = api_client.post(reverse("farms:batch-list"), {"farm": farm.pk, "name": "Nuevo"})
+
+    assert response.status_code == 405
+
+
+@pytest.mark.django_db
+def test_el_resumen_del_lote_no_va_paginado(api_client, batch, animal):
+    """El resumen de un lote es un objeto, no una colección."""
+    AnimalBatchMembership.objects.create(
+        animal=animal,
+        batch=batch,
+        date_from=datetime.date(2026, 3, 1),
+    )
+    DailyYield.objects.create(
+        animal=animal,
+        date=datetime.date(2026, 3, 2),
+        liters=Decimal("22.50"),
+    )
+
+    response = api_client.get(reverse("farms:batch-summary", args=[batch.pk]))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "results" not in body
+    assert body["total_liters"] == "22.50"
+    assert body["active_animals"] == 1
+
+
+@pytest.mark.django_db
+def test_los_analitos_del_lote_viajan_con_nombre_propio(api_client, batch, analyte, milk_sample):
+    """El contrato público no expone los nombres de la travesía del ORM."""
+    AnalysisResult.objects.create(
+        milk_sample=milk_sample,
+        analyte=analyte,
+        value=Decimal("12.3400"),
+    )
+
+    response = api_client.get(reverse("farms:batch-summary", args=[batch.pk]))
+
+    analitos = response.json()["milk_analytes"]
+    assert analitos == [
+        {
+            "code": "dry-matter",
+            "name": "Materia seca",
+            "unit": "%",
+            "avg_value": "12.3400",
+            "samples": 1,
+        }
+    ]
+
+
+@pytest.mark.django_db
+def test_el_resumen_de_un_lote_inexistente_da_404(api_client):
+    """La acción de detalle resuelve el objeto antes de agregar nada."""
+    response = api_client.get(reverse("farms:batch-summary", args=[999_999]))
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_el_resumen_del_lote_valida_las_fechas(api_client, batch):
+    """El mismo serializer de ventana protege a los dos agregados."""
+    response = api_client.get(
+        reverse("farms:batch-summary", args=[batch.pk]),
+        {"date_to": "no-es-una-fecha"},
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_el_resumen_del_lote_declara_que_los_analitos_son_sinteticos(api_client, batch):
+    """La correlación ración↔calidad está plantada, y la respuesta lo dice.
+
+    Viaja aunque no haya ninguna muestra en la ventana: lo que se declara es de
+    dónde sale el dato, no cuántas medidas hay.
+    """
+    response = api_client.get(reverse("farms:batch-summary", args=[batch.pk]))
+
+    body = response.json()
+    assert body["milk_analytes"] == []
+    assert "sintéticos" in body["milk_analytes_notice"]
