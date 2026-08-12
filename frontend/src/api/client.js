@@ -9,8 +9,23 @@ export class ApiError extends Error {
     }
 }
 
-export async function requestJson(path, { signal } = {}) {
-    const url = `${BASE_URL}${path}`
+function toQuery(params) {
+    const search = new URLSearchParams()
+
+    for (const [key, value] of Object.entries(params ?? {})) {
+        // Un parámetro sin valor no es un filtro vacío: es la ausencia de filtro,
+        // así que no viaja. `?page=` daría 400 en un endpoint que espera entero.
+        if (value !== undefined && value !== null && value !== '') {
+            search.set(key, value)
+        }
+    }
+
+    const query = search.toString()
+    return query ? `?${query}` : ''
+}
+
+export async function requestJson(path, { params, signal } = {}) {
+    const url = `${BASE_URL}${path}${toQuery(params)}`
     let response
 
     try {
