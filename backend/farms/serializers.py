@@ -157,3 +157,4 @@ class BatchSummarySerializer(serializers.Serializer):
     avg_protein_pct = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     scc_over_limit = serializers.IntegerField(read_only=True)
     milk_analytes = AnalyteAverageSerializer(many=True, read_only=True)
+    milk_analytes_notice = serializers.CharField(read_only=True)

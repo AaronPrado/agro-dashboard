@@ -426,3 +426,17 @@ def test_el_resumen_del_lote_valida_las_fechas(api_client, batch):
     )
 
     assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_el_resumen_del_lote_declara_que_los_analitos_son_sinteticos(api_client, batch):
+    """La correlación ración↔calidad está plantada, y la respuesta lo dice.
+
+    Viaja aunque no haya ninguna muestra en la ventana: lo que se declara es de
+    dónde sale el dato, no cuántas medidas hay.
+    """
+    response = api_client.get(reverse("farms:batch-summary", args=[batch.pk]))
+
+    body = response.json()
+    assert body["milk_analytes"] == []
+    assert "sintéticos" in body["milk_analytes_notice"]

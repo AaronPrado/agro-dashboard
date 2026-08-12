@@ -18,6 +18,15 @@ from farms.models import (
     MilkRecord,
 )
 
+# La relación entre la composición de la ración y estos analitos está plantada a
+# propósito por el generador (`services/milk_quality.py`). Viaja con la respuesta
+# para que ningún consumidor pueda leerla como un hallazgo.
+SYNTHETIC_MILK_NOTICE = (
+    "Los analitos de leche proceden de datos sintéticos: el generador planta a "
+    "propósito la relación entre la composición de la ración y su valor. Es una "
+    "construcción para poder recorrer la cadena completa, no un hallazgo."
+)
+
 
 def date_window(date_from: date | None, date_to: date | None, field: str = "date") -> Q:
     """Condición sobre un campo de fecha que acota una serie fechada.
@@ -178,4 +187,5 @@ def batch_summary(
             ),
         ),
         "milk_analytes": batch_milk_analytes(batch, date_from, date_to),
+        "milk_analytes_notice": SYNTHETIC_MILK_NOTICE,
     }
