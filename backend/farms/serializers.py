@@ -158,3 +158,71 @@ class BatchSummarySerializer(serializers.Serializer):
     scc_over_limit = serializers.IntegerField(read_only=True)
     milk_analytes = AnalyteAverageSerializer(many=True, read_only=True)
     milk_analytes_notice = serializers.CharField(read_only=True)
+
+
+class DailyYieldPointSerializer(serializers.Serializer):
+    """Un día de la serie de producción de un lote."""
+
+    date = serializers.DateField(read_only=True)
+    total_liters = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    avg_liters = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True)
+    animals = serializers.IntegerField(read_only=True)
+
+
+class AnalyteValueSerializer(serializers.Serializer):
+    """Valor de un analito dentro de una muestra concreta.
+
+    Se parece a `AnalyteAverageSerializer` pero no es el mismo: aquel recibe las
+    filas de un `values()` y lee `analyte__code`; este recibe objetos, y por eso
+    la fuente se recorre con punto.
+    """
+
+    code = serializers.CharField(source="analyte.code", read_only=True)
+    name = serializers.CharField(source="analyte.name", read_only=True)
+    unit = serializers.CharField(source="analyte.unit", read_only=True)
+    value = serializers.DecimalField(max_digits=12, decimal_places=4, read_only=True)
+
+
+class MilkSamplePointSerializer(serializers.Serializer):
+    """Muestra de leche del lote con todos sus analitos."""
+
+    date = serializers.DateField(read_only=True)
+    laboratory = serializers.CharField(read_only=True)
+    results = AnalyteValueSerializer(many=True, read_only=True)
+
+
+class RationPeriodSerializer(serializers.Serializer):
+    """Periodo de ración de un lote, con su encuadre para la gráfica.
+
+    `starts_on`/`ends_on` son el recorte a la ventana y `date_from`/`date_to` el
+    hecho. Viajan los dos: el cliente pinta la banda con los primeros sin dejar
+    de saber que la ración empezó antes o que sigue vigente.
+    """
+
+    ration = serializers.CharField(source="ration.name", read_only=True)
+    date_from = serializers.DateField(read_only=True)
+    date_to = serializers.DateField(read_only=True, allow_null=True)
+    starts_on = serializers.DateField(read_only=True)
+    ends_on = serializers.DateField(read_only=True)
+
+
+class TimelineWindowSerializer(serializers.Serializer):
+    """Extremos efectivos del eje: hasta dónde llega el dato de este lote."""
+
+    date_from = serializers.DateField(read_only=True, allow_null=True)
+    date_to = serializers.DateField(read_only=True, allow_null=True)
+
+
+class BatchTimelineSerializer(serializers.Serializer):
+    """Las tres series de un lote sobre un mismo eje temporal.
+
+    Cada una conserva su grano —la producción es diaria, la muestra mensual y el
+    periodo de ración un intervalo—, porque forzarlas a uno común obligaría a
+    inventar una agregación que el dominio no tiene.
+    """
+
+    window = TimelineWindowSerializer(read_only=True)
+    daily_yields = DailyYieldPointSerializer(many=True, read_only=True)
+    milk_samples = MilkSamplePointSerializer(many=True, read_only=True)
+    ration_periods = RationPeriodSerializer(many=True, read_only=True)
+    milk_analytes_notice = serializers.CharField(read_only=True)

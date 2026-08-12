@@ -16,6 +16,7 @@ from farms.models import (
     Animal,
     AnimalBatch,
     AnimalBatchMembership,
+    BatchMilkSample,
     BatchRation,
     DailyYield,
     Farm,
@@ -439,4 +440,131 @@ def test_el_resumen_del_lote_declara_que_los_analitos_son_sinteticos(api_client,
 
     body = response.json()
     assert body["milk_analytes"] == []
+    assert "sintéticos" in body["milk_analytes_notice"]
+
+
+# --- La serie temporal del lote ---
+
+
+@pytest.fixture
+def lote_con_serie(batch, animal, ration, analyte):
+    """Un lote con producción dos días, una muestra de leche y una ración vigente.
+
+    Es el mínimo que ejercita las tres colecciones a la vez, que es lo que el
+    endpoint promete devolver en una sola llamada.
+    """
+    AnimalBatchMembership.objects.create(
+        animal=animal,
+        batch=batch,
+        date_from=datetime.date(2026, 3, 1),
+    )
+    for day, liters in ((2, "22.50"), (3, "27.50")):
+        DailyYield.objects.create(
+            animal=animal,
+            date=datetime.date(2026, 3, day),
+            liters=Decimal(liters),
+        )
+    BatchRation.objects.create(
+        batch=batch,
+        ration=ration,
+        date_from=datetime.date(2026, 1, 1),
+    )
+    muestra = BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 3, 2))
+    AnalysisResult.objects.create(milk_sample=muestra, analyte=analyte, value=Decimal("35.0000"))
+    return batch
+
+
+@pytest.mark.django_db
+def test_la_serie_del_lote_trae_las_tres_colecciones_en_una_llamada(api_client, lote_con_serie):
+    """El criterio de la sesión: el cliente no tiene que cruzar nada."""
+    response = api_client.get(reverse("farms:batch-timeline", args=[lote_con_serie.pk]))
+
+    body = response.json()
+    assert response.status_code == 200
+    assert len(body["daily_yields"]) == 2
+    assert len(body["milk_samples"]) == 1
+    assert len(body["ration_periods"]) == 1
+
+
+@pytest.mark.django_db
+def test_la_serie_del_lote_no_va_paginada(api_client, lote_con_serie):
+    """Paginar una serie temporal obligaría al cliente a concatenar páginas."""
+    body = api_client.get(reverse("farms:batch-timeline", args=[lote_con_serie.pk])).json()
+
+    assert "results" not in body
+    assert "count" not in body
+
+
+@pytest.mark.django_db
+def test_la_produccion_diaria_viaja_ya_agregada_por_dia(api_client, lote_con_serie):
+    """Los litros salen sumados del ORM; el cliente pinta el número que recibe."""
+    body = api_client.get(reverse("farms:batch-timeline", args=[lote_con_serie.pk])).json()
+
+    assert body["daily_yields"][0] == {
+        "date": "2026-03-02",
+        "total_liters": "22.50",
+        "avg_liters": "22.50",
+        "animals": 1,
+    }
+
+
+@pytest.mark.django_db
+def test_las_bandas_de_racion_llegan_recortadas_al_eje(api_client, lote_con_serie):
+    """La ración empezó en enero y sigue vigente; la banda cabe en la gráfica."""
+    body = api_client.get(reverse("farms:batch-timeline", args=[lote_con_serie.pk])).json()
+
+    periodo = body["ration_periods"][0]
+    assert periodo["starts_on"] == "2026-03-02"
+    assert periodo["ends_on"] == "2026-03-03"
+    assert periodo["date_from"] == "2026-01-01"
+    assert periodo["date_to"] is None
+
+
+@pytest.mark.django_db
+def test_la_ventana_efectiva_viaja_con_la_respuesta(api_client, lote_con_serie):
+    """Sin ella, el cliente no sabría a qué eje se han recortado las bandas."""
+    body = api_client.get(reverse("farms:batch-timeline", args=[lote_con_serie.pk])).json()
+
+    assert body["window"] == {"date_from": "2026-03-02", "date_to": "2026-03-03"}
+
+
+@pytest.mark.django_db
+def test_la_muestra_de_leche_llega_con_sus_analitos_anidados(api_client, lote_con_serie):
+    """Una muestra es un hecho con varios resultados, y así viaja."""
+    body = api_client.get(reverse("farms:batch-timeline", args=[lote_con_serie.pk])).json()
+
+    assert body["milk_samples"][0]["date"] == "2026-03-02"
+    assert body["milk_samples"][0]["results"] == [
+        {"code": "dry-matter", "name": "Materia seca", "unit": "%", "value": "35.0000"}
+    ]
+
+
+@pytest.mark.django_db
+def test_la_serie_del_lote_acota_por_la_ventana_pedida(api_client, lote_con_serie):
+    response = api_client.get(
+        reverse("farms:batch-timeline", args=[lote_con_serie.pk]),
+        {"date_from": "2026-03-03"},
+    )
+
+    body = response.json()
+    assert [punto["date"] for punto in body["daily_yields"]] == ["2026-03-03"]
+    assert body["window"]["date_from"] == "2026-03-03"
+
+
+@pytest.mark.django_db
+def test_la_serie_del_lote_valida_las_fechas(api_client, batch):
+    """El mismo serializer de ventana protege a los tres agregados."""
+    response = api_client.get(
+        reverse("farms:batch-timeline", args=[batch.pk]),
+        {"date_from": "2026-03-10", "date_to": "2026-03-01"},
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_la_serie_del_lote_declara_que_los_analitos_son_sinteticos(api_client, batch):
+    """Es el endpoint que más enseña el efecto plantado, y lo dice en la respuesta."""
+    body = api_client.get(reverse("farms:batch-timeline", args=[batch.pk])).json()
+
     assert "sintéticos" in body["milk_analytes_notice"]

@@ -7,11 +7,26 @@ evaluar, para que la vista pueda seguir filtrando, ordenando y paginando encima.
 
 from datetime import date
 
-from django.db.models import Aggregate, Avg, Count, F, OuterRef, Q, QuerySet, Subquery, Sum
+from django.db.models import (
+    Aggregate,
+    Avg,
+    Count,
+    DateField,
+    F,
+    OuterRef,
+    Prefetch,
+    Q,
+    QuerySet,
+    Subquery,
+    Sum,
+    Value,
+)
+from django.db.models.functions import Coalesce, Greatest, Least
 
 from farms.models import (
     AnalysisResult,
     AnimalBatch,
+    BatchMilkSample,
     BatchRation,
     DailyYield,
     Farm,
@@ -130,6 +145,55 @@ def _batch_records(records: QuerySet, batch: AnimalBatch, window: Q) -> QuerySet
     )
 
 
+def batch_daily_yields(
+    batch: AnimalBatch,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> QuerySet:
+    """Producción del lote día a día, con cuántos animales la sostienen.
+
+    `animals` no es decoración: el total de un lote sube y baja con su censo, y
+    sin ese denominador una caída por bajas se leería como una caída de
+    rendimiento. Es la misma razón por la que el resumen lleva `milk_records`.
+
+    El `order_by("date")` final no es cosmético. `DailyYield` ordena por defecto
+    por `["-date", "animal"]`, y los campos del orden por defecto entran en el
+    `GROUP BY` de un `values().annotate()`: sin reemplazarlo, la serie saldría
+    agrupada por día *y animal*, con una fila por vaca en lugar de una por día.
+    """
+    return (
+        _batch_records(DailyYield.objects.all(), batch, date_window(date_from, date_to))
+        .values("date")
+        .annotate(
+            total_liters=Sum("liters"),
+            avg_liters=Avg("liters"),
+            animals=Count("animal", distinct=True),
+        )
+        .order_by("date")
+    )
+
+
+def batch_milk_samples(
+    batch: AnimalBatch,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> QuerySet[BatchMilkSample]:
+    """Muestras de leche del lote en la ventana, cada una con sus analitos.
+
+    Va por muestra y no por analito porque una muestra es un hecho único con
+    varios resultados: aplanarla obligaría al cliente a reagruparla para pintar.
+    El `Prefetch` con `select_related` trae los resultados y sus analitos en una
+    segunda consulta, no en una por muestra ni en una por analito.
+    """
+    return (
+        BatchMilkSample.objects.filter(date_window(date_from, date_to), batch=batch)
+        .prefetch_related(
+            Prefetch("results", queryset=AnalysisResult.objects.select_related("analyte"))
+        )
+        .order_by("date")
+    )
+
+
 def batch_milk_analytes(
     batch: AnimalBatch,
     date_from: date | None = None,
@@ -150,6 +214,72 @@ def batch_milk_analytes(
         .annotate(avg_value=Avg("value"), samples=Count("pk"))
         .order_by("analyte__name")
     )
+
+
+def batch_ration_periods(
+    batch: AnimalBatch,
+    window_from: date,
+    window_to: date,
+) -> QuerySet[BatchRation]:
+    """Periodos de ración que solapan la ventana, con sus fechas recortadas a ella.
+
+    Los dos extremos son obligatorios, a diferencia del resto del módulo: pintar
+    un periodo como banda exige dos fechas dentro del dominio del eje, y no las
+    tiene ni el que empezó antes de la ventana ni el que sigue vigente, cuyo
+    `date_to` es nulo. Recortarlos aquí es lo que evita que los calcule el
+    cliente.
+
+    `date_from` y `date_to` siguen viajando sin tocar: lo recortado son campos
+    aparte, para no hacer pasar por dato del periodo lo que es del encuadre.
+    """
+    window_end = Value(window_to, output_field=DateField())
+    return (
+        BatchRation.objects.filter(
+            Q(date_to__isnull=True) | Q(date_to__gte=window_from),
+            batch=batch,
+            date_from__lte=window_to,
+        )
+        .select_related("ration")
+        .annotate(
+            starts_on=Greatest(F("date_from"), Value(window_from, output_field=DateField())),
+            ends_on=Least(Coalesce(F("date_to"), window_end), window_end),
+        )
+        .order_by("starts_on")
+    )
+
+
+def batch_timeline(
+    batch: AnimalBatch,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> dict:
+    """Todo lo que pinta la gráfica de un lote, casado aquí y no en el cliente.
+
+    Tres series de grano distinto —producción diaria, muestras de leche y
+    periodos de ración— sobre un mismo eje, más la ventana efectiva a la que se
+    han recortado los periodos. Que viajen juntas es el objetivo del endpoint:
+    el cliente superpone capas sin tener que cruzar fechas.
+
+    La ventana efectiva sale de la serie de producción ya traída, sin consulta
+    extra, porque viene ordenada. Un lote sin producción en el rango no tiene
+    eje sobre el que dibujar bandas, así que los periodos salen vacíos en vez de
+    salir sin recortar.
+    """
+    yields = list(batch_daily_yields(batch, date_from, date_to))
+    window_from = yields[0]["date"] if yields else date_from
+    window_to = yields[-1]["date"] if yields else date_to
+
+    periods: QuerySet[BatchRation] | list = []
+    if window_from is not None and window_to is not None:
+        periods = batch_ration_periods(batch, window_from, window_to)
+
+    return {
+        "window": {"date_from": window_from, "date_to": window_to},
+        "daily_yields": yields,
+        "milk_samples": batch_milk_samples(batch, date_from, date_to),
+        "ration_periods": periods,
+        "milk_analytes_notice": SYNTHETIC_MILK_NOTICE,
+    }
 
 
 def batch_summary(
