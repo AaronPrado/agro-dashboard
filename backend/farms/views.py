@@ -11,14 +11,16 @@ from rest_framework.response import Response
 from farms.filters import AnimalFilter, DailyYieldFilter, MilkRecordFilter
 from farms.models import Animal, DailyYield, Farm, MilkRecord
 from farms.serializers import (
+    AnimalBatchSerializer,
     AnimalSerializer,
+    BatchSummarySerializer,
     DailyYieldSerializer,
     DateWindowSerializer,
     FarmSerializer,
     FarmSummarySerializer,
     MilkRecordSerializer,
 )
-from farms.services.aggregation import farm_summaries
+from farms.services.aggregation import batch_list, batch_summary, farm_summaries
 
 
 def health(request: HttpRequest) -> JsonResponse:
@@ -84,3 +86,20 @@ class MilkRecordViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = MilkRecordSerializer
     ordering_fields = ["date", "somatic_cell_count", "fat_pct", "protein_pct"]
     filterset_class = MilkRecordFilter
+
+
+class AnimalBatchViewSet(viewsets.ReadOnlyModelViewSet):
+    """Consulta de los lotes de animales."""
+
+    queryset = batch_list()
+    serializer_class = AnimalBatchSerializer
+    ordering_fields = ["name", "active_animals"]
+    filterset_fields = ["farm"]
+
+    @action(detail=True)
+    def summary(self, request: Request, pk: str | None = None) -> Response:
+        """Producción, calidad y perfil analítico del lote en un rango de fechas."""
+        window = DateWindowSerializer(data=request.query_params)
+        window.is_valid(raise_exception=True)
+        summary = batch_summary(self.get_object(), **window.validated_data)
+        return Response(BatchSummarySerializer(summary).data)

@@ -12,8 +12,16 @@ from decimal import Decimal
 
 import pytest
 
-from farms.models import Animal, DailyYield, Farm, MilkRecord
-from farms.services.aggregation import farm_summaries
+from farms.models import (
+    AnalysisResult,
+    Animal,
+    AnimalBatchMembership,
+    BatchMilkSample,
+    DailyYield,
+    Farm,
+    MilkRecord,
+)
+from farms.services.aggregation import batch_summary, farm_summaries
 
 
 @pytest.fixture
@@ -197,3 +205,189 @@ def test_el_resumen_no_consulta_al_construirlo(django_assert_num_queries):
     """La función devuelve un QuerySet perezoso: la vista aún puede filtrarlo."""
     with django_assert_num_queries(0):
         farm_summaries(date_from=datetime.date(2026, 3, 1))
+
+
+@pytest.fixture
+def lote_poblado(batch, animal, farm):
+    """Un animal en el lote desde el 5 de marzo, con producción antes y después.
+
+    El animal existe desde antes de entrar al lote a propósito: lo que el
+    resumen del lote tiene que contar son los días de pertenencia, no la serie
+    completa del animal.
+    """
+    AnimalBatchMembership.objects.create(
+        animal=animal,
+        batch=batch,
+        date_from=datetime.date(2026, 3, 5),
+    )
+    for day, liters in ((3, "10.00"), (5, "20.00"), (7, "30.00")):
+        DailyYield.objects.create(
+            animal=animal,
+            date=datetime.date(2026, 3, day),
+            liters=Decimal(liters),
+        )
+    return batch
+
+
+@pytest.mark.django_db
+def test_el_lote_solo_cuenta_los_dias_de_pertenencia(lote_poblado):
+    """Los 10 litros del día 3 son del animal, pero todavía no del lote."""
+    resumen = batch_summary(lote_poblado)
+
+    assert resumen["total_liters"] == Decimal("50.00")
+
+
+@pytest.mark.django_db
+def test_el_dia_de_alta_en_el_lote_ya_cuenta(lote_poblado):
+    """El periodo es cerrado por la izquierda: el 5 de marzo entra."""
+    resumen = batch_summary(
+        lote_poblado,
+        date_from=datetime.date(2026, 3, 5),
+        date_to=datetime.date(2026, 3, 5),
+    )
+
+    assert resumen["total_liters"] == Decimal("20.00")
+
+
+@pytest.mark.django_db
+def test_lo_producido_tras_salir_del_lote_deja_de_contar(batch, animal):
+    """Cerrar la pertenencia corta la serie del lote, no la del animal."""
+    AnimalBatchMembership.objects.create(
+        animal=animal,
+        batch=batch,
+        date_from=datetime.date(2026, 3, 1),
+        date_to=datetime.date(2026, 3, 5),
+    )
+    for day, liters in ((4, "10.00"), (6, "40.00")):
+        DailyYield.objects.create(
+            animal=animal,
+            date=datetime.date(2026, 3, day),
+            liters=Decimal(liters),
+        )
+
+    resumen = batch_summary(batch)
+
+    assert resumen["total_liters"] == Decimal("10.00")
+    assert resumen["active_animals"] == 0
+
+
+@pytest.mark.django_db
+def test_dos_pertenencias_disjuntas_no_duplican_los_litros(batch, animal):
+    """Un animal que va y vuelve al lote no cuenta dos veces.
+
+    El JOIN produce una fila por pertenencia; que sobreviva solo una la
+    garantiza el no-solape de los periodos. Si ese invariante se rompiera, este
+    test avisaría antes que ningún otro.
+    """
+    AnimalBatchMembership.objects.create(
+        animal=animal,
+        batch=batch,
+        date_from=datetime.date(2026, 1, 1),
+        date_to=datetime.date(2026, 1, 31),
+    )
+    AnimalBatchMembership.objects.create(
+        animal=animal,
+        batch=batch,
+        date_from=datetime.date(2026, 3, 1),
+    )
+    DailyYield.objects.create(
+        animal=animal,
+        date=datetime.date(2026, 1, 15),
+        liters=Decimal("25.00"),
+    )
+
+    resumen = batch_summary(batch)
+
+    assert resumen["total_liters"] == Decimal("25.00")
+
+
+@pytest.mark.django_db
+def test_los_controles_del_lote_usan_el_mismo_limite_legal(batch, animal):
+    """La alerta de células somáticas es la misma en lote y en explotación."""
+    AnimalBatchMembership.objects.create(
+        animal=animal,
+        batch=batch,
+        date_from=datetime.date(2026, 3, 1),
+    )
+    for day, scc in ((1, 300_000), (2, 800_000)):
+        MilkRecord.objects.create(
+            animal=animal,
+            date=datetime.date(2026, 3, day),
+            fat_pct=Decimal("4.00"),
+            somatic_cell_count=scc,
+        )
+
+    resumen = batch_summary(batch)
+
+    assert resumen["milk_records"] == 2
+    assert resumen["scc_over_limit"] == 1
+
+
+@pytest.mark.django_db
+def test_un_lote_sin_controles_declara_el_denominador(batch):
+    """Cero de cero no puede leerse como "ninguno supera el límite"."""
+    resumen = batch_summary(batch)
+
+    assert resumen["milk_records"] == 0
+    assert resumen["scc_over_limit"] == 0
+    assert resumen["avg_fat_pct"] is None
+
+
+@pytest.mark.django_db
+def test_los_analitos_del_lote_salen_promediados_con_su_unidad(batch, analyte, milk_sample):
+    """Cada analito viaja con su nombre, su unidad y sobre cuántas muestras se calcula."""
+    otra_muestra = BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 3, 10))
+    AnalysisResult.objects.create(
+        milk_sample=milk_sample,
+        analyte=analyte,
+        value=Decimal("10.0000"),
+    )
+    AnalysisResult.objects.create(
+        milk_sample=otra_muestra,
+        analyte=analyte,
+        value=Decimal("20.0000"),
+    )
+
+    analitos = list(batch_summary(batch)["milk_analytes"])
+
+    assert len(analitos) == 1
+    assert analitos[0]["analyte__code"] == "dry-matter"
+    assert analitos[0]["analyte__unit"] == "%"
+    assert analitos[0]["avg_value"] == Decimal("15")
+    assert analitos[0]["samples"] == 2
+
+
+@pytest.mark.django_db
+def test_los_resultados_de_forraje_no_se_cuelan_entre_los_de_leche(
+    batch, analyte, milk_sample, nir_analysis
+):
+    """`AnalysisResult` guarda dos matrices; el JOIN por lote solo alcanza a una."""
+    AnalysisResult.objects.create(
+        milk_sample=milk_sample,
+        analyte=analyte,
+        value=Decimal("10.0000"),
+    )
+    AnalysisResult.objects.create(
+        nir_analysis=nir_analysis,
+        analyte=analyte,
+        value=Decimal("900.0000"),
+    )
+
+    analitos = list(batch_summary(batch)["milk_analytes"])
+
+    assert analitos[0]["samples"] == 1
+    assert analitos[0]["avg_value"] == Decimal("10")
+
+
+@pytest.mark.django_db
+def test_la_ventana_acota_los_analitos_por_la_fecha_de_la_muestra(batch, analyte, milk_sample):
+    """La muestra se fecha en `BatchMilkSample`, no en el resultado."""
+    AnalysisResult.objects.create(
+        milk_sample=milk_sample,
+        analyte=analyte,
+        value=Decimal("10.0000"),
+    )
+
+    analitos = list(batch_summary(batch, date_from=datetime.date(2026, 6, 1))["milk_analytes"])
+
+    assert analitos == []
