@@ -11,7 +11,7 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 
-from farms.models import Animal, DailyYield
+from farms.models import Animal, DailyYield, Farm, MilkRecord
 
 
 @pytest.fixture
@@ -149,3 +149,105 @@ def test_el_health_check_sigue_respondiendo_fuera_del_router(api_client):
     response = api_client.get(reverse("farms:health"))
 
     assert response.status_code == 200
+
+
+@pytest.fixture
+def produccion_y_control(animal):
+    """Un día de producción y un control, para ejercitar el resumen agregado."""
+    DailyYield.objects.create(
+        animal=animal,
+        date=datetime.date(2026, 3, 1),
+        liters=Decimal("30.00"),
+    )
+    MilkRecord.objects.create(
+        animal=animal,
+        date=datetime.date(2026, 3, 1),
+        fat_pct=Decimal("4.00"),
+        protein_pct=Decimal("3.20"),
+        somatic_cell_count=500_000,
+    )
+    return animal
+
+
+@pytest.mark.django_db
+def test_el_resumen_por_explotacion_llega_paginado(api_client, produccion_y_control):
+    """La acción agregada conserva el sobre de paginación del resto de la API."""
+    response = api_client.get(reverse("farms:farm-summary"))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"count", "next", "previous", "results"}
+    assert body["results"][0]["total_liters"] == "30.00"
+    assert body["results"][0]["active_animals"] == 1
+    assert body["results"][0]["scc_over_limit"] == 1
+
+
+@pytest.mark.django_db
+def test_el_resumen_cuantiza_las_medias_a_dos_decimales(api_client, produccion_y_control):
+    """La media de Postgres llega con dieciséis decimales y el serializer la recorta."""
+    response = api_client.get(reverse("farms:farm-summary"))
+
+    resumen = response.json()["results"][0]
+    assert resumen["avg_fat_pct"] == "4.00"
+    assert resumen["avg_protein_pct"] == "3.20"
+
+
+@pytest.mark.django_db
+def test_el_rango_de_fechas_acota_el_resumen(api_client, produccion_y_control):
+    """Fuera de la ventana no hay medidas, y las métricas viajan nulas."""
+    response = api_client.get(
+        reverse("farms:farm-summary"),
+        {"date_from": "2026-04-01"},
+    )
+
+    resumen = response.json()["results"][0]
+    assert resumen["total_liters"] is None
+    assert resumen["avg_fat_pct"] is None
+    # El censo no depende de la ventana: la explotación sigue teniendo su vaca.
+    assert resumen["active_animals"] == 1
+
+
+@pytest.mark.django_db
+def test_una_fecha_malformada_da_400(api_client, farm):
+    """El parámetro se valida: no se ignora ni revienta con un 500."""
+    response = api_client.get(reverse("farms:farm-summary"), {"date_from": "ayer"})
+
+    assert response.status_code == 400
+    assert "date_from" in response.json()
+
+
+@pytest.mark.django_db
+def test_un_rango_invertido_da_400(api_client, farm):
+    """Un rango imposible es un error del cliente, no un resumen vacío."""
+    response = api_client.get(
+        reverse("farms:farm-summary"),
+        {"date_from": "2026-03-10", "date_to": "2026-03-01"},
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_el_resumen_no_se_confunde_con_el_detalle(api_client, farm):
+    """`/farms/summary/` es la acción, no una explotación con pk "summary"."""
+    response = api_client.get("/api/farms/summary/")
+
+    assert response.status_code == 200
+    assert "results" in response.json()
+
+
+@pytest.mark.django_db
+def test_el_filtro_de_provincia_sigue_aplicando_sobre_el_resumen(api_client, farm):
+    """Filtrar filas y parametrizar columnas son cosas ortogonales y conviven."""
+    Farm.objects.create(
+        name="Souto Vello",
+        code="souto-vello",
+        municipality="Ourense",
+        province="Ourense",
+    )
+
+    response = api_client.get(reverse("farms:farm-summary"), {"province": "Lugo"})
+
+    body = response.json()
+    assert body["count"] == 1
+    assert body["results"][0]["code"] == "casa-grande"
