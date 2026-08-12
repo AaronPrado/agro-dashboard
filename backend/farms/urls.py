@@ -13,6 +13,7 @@ router.register("animals", views.AnimalViewSet, basename="animal")
 router.register("daily-yields", views.DailyYieldViewSet, basename="daily-yield")
 router.register("milk-records", views.MilkRecordViewSet, basename="milk-record")
 router.register("batches", views.AnimalBatchViewSet, basename="batch")
+router.register("target-profiles", views.TargetProfileViewSet, basename="target-profile")
 
 urlpatterns = [
     path("health/", views.health, name="health"),

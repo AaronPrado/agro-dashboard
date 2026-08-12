@@ -14,6 +14,7 @@ import pytest
 
 from farms.models import (
     AnalysisResult,
+    Analyte,
     Animal,
     AnimalBatchMembership,
     BatchMilkSample,
@@ -21,12 +22,15 @@ from farms.models import (
     DailyYield,
     Farm,
     MilkRecord,
+    TargetProfile,
+    TargetRange,
 )
 from farms.services.aggregation import (
     batch_daily_yields,
     batch_milk_samples,
     batch_ration_periods,
     batch_summary,
+    batch_target_check,
     batch_timeline,
     farm_summaries,
 )
@@ -663,3 +667,117 @@ def test_un_lote_sin_produccion_no_devuelve_bandas_sin_recortar(batch, ration):
 def test_la_serie_completa_declara_que_los_analitos_son_sinteticos(lote_poblado):
     """Es el endpoint que más enseña el efecto plantado: callarlo aquí sería peor."""
     assert "sintéticos" in batch_timeline(lote_poblado)["milk_analytes_notice"]
+
+
+# --- La comparación contra los perfiles de destino ---
+
+
+@pytest.fixture
+def perfil(analyte):
+    """Un destino que exige al menos 30 de materia seca, sin techo."""
+    profile = TargetProfile.objects.create(code="destino", name="Destino de ejemplo")
+    TargetRange.objects.create(profile=profile, analyte=analyte, min_value=Decimal("30.0000"))
+    return profile
+
+
+def _muestra(batch, analyte, dia: int, valor: str) -> None:
+    muestra = BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 3, dia))
+    AnalysisResult.objects.create(milk_sample=muestra, analyte=analyte, value=Decimal(valor))
+
+
+def _analito(resultado: dict, code: str = "destino") -> dict:
+    return next(p for p in resultado["profiles"] if p["code"] == code)["analytes"][0]
+
+
+@pytest.mark.django_db
+def test_una_media_por_encima_del_minimo_cumple(batch, analyte, perfil):
+    _muestra(batch, analyte, 2, "35.0000")
+
+    analito = _analito(batch_target_check(batch))
+
+    assert analito["status"] == "within"
+    assert analito["avg_value"] == Decimal("35.0000")
+    assert analito["samples"] == 1
+
+
+@pytest.mark.django_db
+def test_una_media_por_debajo_del_minimo_se_queda_corta(batch, analyte, perfil):
+    _muestra(batch, analyte, 2, "25.0000")
+
+    assert _analito(batch_target_check(batch))["status"] == "below"
+
+
+@pytest.mark.django_db
+def test_una_media_por_encima_del_maximo_se_pasa(batch, analyte, perfil):
+    """El catálogo solo pone suelos, pero el modelo admite techos y se respetan."""
+    perfil.ranges.update(max_value=Decimal("32.0000"))
+    _muestra(batch, analyte, 2, "35.0000")
+
+    assert _analito(batch_target_check(batch))["status"] == "above"
+
+
+@pytest.mark.django_db
+def test_un_lote_sin_muestras_no_incumple_nada(batch, perfil):
+    """No haber medido no es quedarse corto: es no saberlo."""
+    analito = _analito(batch_target_check(batch))
+
+    assert analito["status"] == "no_data"
+    assert analito["avg_value"] is None
+    assert analito["samples"] == 0
+
+
+@pytest.mark.django_db
+def test_el_veredicto_depende_de_la_ventana(batch, analyte, perfil):
+    """El caso que da sentido al endpoint y al aviso que lo acompaña.
+
+    El mismo lote cumple en marzo y no cumple en abril, porque entremedias
+    cambió lo que comía. Un veredicto sin fechas promedia los dos regímenes y no
+    describe ninguno.
+    """
+    _muestra(batch, analyte, 2, "40.0000")
+    muestra = BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 4, 2))
+    AnalysisResult.objects.create(milk_sample=muestra, analyte=analyte, value=Decimal("20.0000"))
+
+    marzo = _analito(batch_target_check(batch, date_to=datetime.date(2026, 3, 31)))
+    abril = _analito(batch_target_check(batch, date_from=datetime.date(2026, 4, 1)))
+    entero = _analito(batch_target_check(batch))
+
+    assert marzo["status"] == "within"
+    assert abril["status"] == "below"
+    assert entero["avg_value"] == Decimal("30")
+
+
+@pytest.mark.django_db
+def test_los_conteos_separan_lo_cumplido_de_lo_medido(batch, analyte, perfil):
+    """`measured` es el denominador honesto: no se puede cumplir lo que no se midió."""
+    otro = Analyte.objects.create(code="grasa", name="Grasa", unit="%")
+    TargetRange.objects.create(profile=perfil, analyte=otro, min_value=Decimal("3.5000"))
+    _muestra(batch, analyte, 2, "35.0000")
+
+    resultado = next(p for p in batch_target_check(batch)["profiles"] if p["code"] == "destino")
+
+    assert len(resultado["analytes"]) == 2
+    assert resultado["within_range"] == 1
+    assert resultado["measured"] == 1
+
+
+@pytest.mark.django_db
+def test_se_devuelven_todos_los_perfiles_y_no_solo_los_cumplidos(batch, analyte, perfil):
+    """La pregunta es a qué destinos puede ir esta leche, no si aprueba uno."""
+    exigente = TargetProfile.objects.create(code="exigente", name="Destino exigente")
+    TargetRange.objects.create(profile=exigente, analyte=analyte, min_value=Decimal("99.0000"))
+    _muestra(batch, analyte, 2, "35.0000")
+
+    resultado = batch_target_check(batch)
+
+    assert {p["code"] for p in resultado["profiles"]} == {"destino", "exigente"}
+    assert _analito(resultado, "exigente")["status"] == "below"
+
+
+@pytest.mark.django_db
+def test_la_comparacion_declara_que_depende_de_la_ventana_y_del_dato(batch, perfil):
+    resultado = batch_target_check(batch)
+
+    assert "ventana" in resultado["target_check_notice"]
+    assert "interpretación" in resultado["target_check_notice"]
+    assert "sintéticos" in resultado["milk_analytes_notice"]

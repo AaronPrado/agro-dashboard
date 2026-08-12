@@ -6,6 +6,7 @@ evaluar, para que la vista pueda seguir filtrando, ordenando y paginando encima.
 """
 
 from datetime import date
+from decimal import Decimal
 
 from django.db.models import (
     Aggregate,
@@ -31,6 +32,8 @@ from farms.models import (
     DailyYield,
     Farm,
     MilkRecord,
+    TargetProfile,
+    TargetRange,
 )
 
 # La relación entre la composición de la ración y estos analitos está plantada a
@@ -40,6 +43,16 @@ SYNTHETIC_MILK_NOTICE = (
     "Los analitos de leche proceden de datos sintéticos: el generador planta a "
     "propósito la relación entre la composición de la ración y su valor. Es una "
     "construcción para poder recorrer la cadena completa, no un hallazgo."
+)
+
+# El veredicto de un perfil no es una propiedad del lote, sino del lote *en una
+# ventana*: la ración cambia a lo largo del año y la composición de la leche con
+# ella, así que un "cumple" sin fechas promedia regímenes distintos.
+TARGET_CHECK_NOTICE = (
+    "El resultado es relativo a la ventana consultada: la ración de un lote "
+    "cambia a lo largo del año y la composición de su leche con ella. Los "
+    "umbrales de cada perfil se derivan del rango publicado de cada analito y "
+    "son una interpretación de esta propuesta, no la exigencia de un comprador."
 )
 
 
@@ -318,4 +331,76 @@ def batch_summary(
         ),
         "milk_analytes": batch_milk_analytes(batch, date_from, date_to),
         "milk_analytes_notice": SYNTHETIC_MILK_NOTICE,
+    }
+
+
+def _range_status(value: Decimal | None, minimum: Decimal | None, maximum: Decimal | None) -> str:
+    """Sitúa un valor medido respecto a un rango objetivo.
+
+    Sin dato se responde `no_data` y nunca `below`: no haber medido no es
+    incumplir, igual que en el resto del proyecto un hueco no es un cero.
+    """
+    if value is None:
+        return "no_data"
+    if minimum is not None and value < minimum:
+        return "below"
+    if maximum is not None and value > maximum:
+        return "above"
+    return "within"
+
+
+def batch_target_check(
+    batch: AnimalBatch,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> dict:
+    """Compara la leche del lote con cada perfil de destino del catálogo.
+
+    Devuelve todos los perfiles y no solo los que se cumplen: la pregunta útil
+    es a qué destinos puede orientarse un lote, y para eso hace falta ver
+    también de cuánto se queda corto en los que no.
+
+    No se emite un veredicto global de apto: con datos sintéticos, un booleano
+    en pantalla afirma más de lo que estos datos sostienen. Viajan el conteo y
+    el detalle por analito, y la lectura la hace quien mira.
+
+    La media sale del ORM; lo que se hace aquí es aplicarle un criterio, que no
+    es agregación.
+    """
+    measured = {row["analyte__code"]: row for row in batch_milk_analytes(batch, date_from, date_to)}
+    profiles = []
+    for profile in TargetProfile.objects.prefetch_related(
+        Prefetch("ranges", queryset=TargetRange.objects.select_related("analyte"))
+    ):
+        analytes = []
+        for target in profile.ranges.all():
+            row = measured.get(target.analyte.code)
+            value = row["avg_value"] if row else None
+            analytes.append(
+                {
+                    "code": target.analyte.code,
+                    "name": target.analyte.name,
+                    "unit": target.analyte.unit,
+                    "avg_value": value,
+                    "samples": row["samples"] if row else 0,
+                    "min_value": target.min_value,
+                    "max_value": target.max_value,
+                    "status": _range_status(value, target.min_value, target.max_value),
+                }
+            )
+        profiles.append(
+            {
+                "code": profile.code,
+                "name": profile.name,
+                "description": profile.description,
+                "analytes": analytes,
+                "within_range": sum(1 for a in analytes if a["status"] == "within"),
+                "measured": sum(1 for a in analytes if a["status"] != "no_data"),
+            }
+        )
+
+    return {
+        "profiles": profiles,
+        "milk_analytes_notice": SYNTHETIC_MILK_NOTICE,
+        "target_check_notice": TARGET_CHECK_NOTICE,
     }

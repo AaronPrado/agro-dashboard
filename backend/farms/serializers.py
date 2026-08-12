@@ -2,7 +2,15 @@
 
 from rest_framework import serializers
 
-from farms.models import Animal, AnimalBatch, DailyYield, Farm, MilkRecord
+from farms.models import (
+    Animal,
+    AnimalBatch,
+    DailyYield,
+    Farm,
+    MilkRecord,
+    TargetProfile,
+    TargetRange,
+)
 
 
 class FarmSerializer(serializers.ModelSerializer):
@@ -226,3 +234,77 @@ class BatchTimelineSerializer(serializers.Serializer):
     milk_samples = MilkSamplePointSerializer(many=True, read_only=True)
     ration_periods = RationPeriodSerializer(many=True, read_only=True)
     milk_analytes_notice = serializers.CharField(read_only=True)
+
+
+class TargetRangeSerializer(serializers.ModelSerializer):
+    """Rango objetivo de un analito dentro de un perfil, con el analito aplanado.
+
+    El analito viaja plano y no anidado por la misma razón que en el resto de la
+    API: lo que identifica al rango es qué se mide y en qué unidad, no el objeto
+    del catálogo.
+    """
+
+    code = serializers.CharField(source="analyte.code", read_only=True)
+    name = serializers.CharField(source="analyte.name", read_only=True)
+    unit = serializers.CharField(source="analyte.unit", read_only=True)
+
+    class Meta:
+        model = TargetRange
+        fields = ["code", "name", "unit", "min_value", "max_value"]
+
+
+class TargetProfileSerializer(serializers.ModelSerializer):
+    """Perfil de destino comercial con sus rangos objetivo.
+
+    `description` no es adorno: es donde se lee de dónde salen los umbrales y
+    que son una interpretación de esta propuesta.
+    """
+
+    ranges = TargetRangeSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = TargetProfile
+        fields = ["id", "code", "name", "description", "ranges"]
+
+
+class TargetAnalyteCheckSerializer(serializers.Serializer):
+    """Un analito exigido por el perfil, frente a lo medido en el lote."""
+
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    unit = serializers.CharField(read_only=True)
+    avg_value = serializers.DecimalField(
+        max_digits=12, decimal_places=4, read_only=True, allow_null=True
+    )
+    samples = serializers.IntegerField(read_only=True)
+    min_value = serializers.DecimalField(
+        max_digits=12, decimal_places=4, read_only=True, allow_null=True
+    )
+    max_value = serializers.DecimalField(
+        max_digits=12, decimal_places=4, read_only=True, allow_null=True
+    )
+    status = serializers.CharField(read_only=True)
+
+
+class TargetProfileCheckSerializer(serializers.Serializer):
+    """Resultado de un lote frente a un perfil, deliberadamente sin veredicto.
+
+    `within_range` sobre `measured` es el conteo que sustituye al booleano de
+    apto: con datos sintéticos, un "sí" en pantalla afirmaría más de lo que
+    estos datos sostienen.
+    """
+
+    code = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    description = serializers.CharField(read_only=True)
+    analytes = TargetAnalyteCheckSerializer(many=True, read_only=True)
+    within_range = serializers.IntegerField(read_only=True)
+    measured = serializers.IntegerField(read_only=True)
+
+
+class BatchTargetCheckSerializer(serializers.Serializer):
+    """El lote frente a todo el catálogo de destinos comerciales."""
+
+    profiles = TargetProfileCheckSerializer(many=True, read_only=True)
+    milk_analytes_notice = serializers.CharField(read_only=True)
+    target_check_notice = serializers.CharField(read_only=True)

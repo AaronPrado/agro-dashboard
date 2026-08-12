@@ -21,6 +21,8 @@ from farms.models import (
     DailyYield,
     Farm,
     MilkRecord,
+    TargetProfile,
+    TargetRange,
 )
 
 
@@ -49,6 +51,7 @@ def test_la_raiz_de_la_api_lista_los_recursos(api_client):
         "daily-yields",
         "milk-records",
         "batches",
+        "target-profiles",
     }
 
 
@@ -568,3 +571,116 @@ def test_la_serie_del_lote_declara_que_los_analitos_son_sinteticos(api_client, b
     body = api_client.get(reverse("farms:batch-timeline", args=[batch.pk])).json()
 
     assert "sintéticos" in body["milk_analytes_notice"]
+
+
+# --- El catálogo de destinos y la comparación ---
+
+
+@pytest.fixture
+def destino(analyte):
+    """Un perfil que exige al menos 30 de materia seca."""
+    profile = TargetProfile.objects.create(
+        code="destino",
+        name="Destino de ejemplo",
+        description="Umbral derivado del rango publicado.",
+    )
+    TargetRange.objects.create(profile=profile, analyte=analyte, min_value=Decimal("30.0000"))
+    return profile
+
+
+@pytest.mark.django_db
+def test_el_catalogo_de_destinos_lista_sus_rangos(api_client, destino):
+    """Los umbrales son interpretación propia: tienen que poder leerse."""
+    body = api_client.get(reverse("farms:target-profile-list")).json()
+
+    perfil = body["results"][0]
+    assert perfil["code"] == "destino"
+    assert perfil["description"] == "Umbral derivado del rango publicado."
+    assert perfil["ranges"] == [
+        {
+            "code": "dry-matter",
+            "name": "Materia seca",
+            "unit": "%",
+            "min_value": "30.0000",
+            "max_value": None,
+        }
+    ]
+
+
+@pytest.mark.django_db
+def test_el_catalogo_de_destinos_es_de_solo_lectura(api_client, destino):
+    """Como el resto de la API: los datos entran por la capa de ingesta."""
+    response = api_client.post(reverse("farms:target-profile-list"), {"code": "otro"})
+
+    assert response.status_code == 405
+
+
+@pytest.mark.django_db
+def test_la_comparacion_devuelve_el_detalle_por_analito(api_client, batch, analyte, destino):
+    muestra = BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, 3, 2))
+    AnalysisResult.objects.create(milk_sample=muestra, analyte=analyte, value=Decimal("35.0000"))
+
+    body = api_client.get(reverse("farms:batch-target-check", args=[batch.pk])).json()
+
+    perfil = body["profiles"][0]
+    assert perfil["within_range"] == 1
+    assert perfil["measured"] == 1
+    assert perfil["analytes"][0] == {
+        "code": "dry-matter",
+        "name": "Materia seca",
+        "unit": "%",
+        "avg_value": "35.0000",
+        "samples": 1,
+        "min_value": "30.0000",
+        "max_value": None,
+        "status": "within",
+    }
+
+
+@pytest.mark.django_db
+def test_la_comparacion_no_emite_un_veredicto_global(api_client, batch, destino):
+    """Con datos sintéticos, un "apto" en pantalla afirma más de lo que sostienen."""
+    perfil = api_client.get(reverse("farms:batch-target-check", args=[batch.pk])).json()
+
+    assert "meets" not in perfil["profiles"][0]
+    assert "passes" not in perfil["profiles"][0]
+    assert perfil["profiles"][0]["analytes"][0]["status"] == "no_data"
+
+
+@pytest.mark.django_db
+def test_la_comparacion_acota_por_la_ventana(api_client, batch, analyte, destino):
+    """El mismo lote cumple o no según el periodo, y por eso la ventana importa."""
+    for mes, valor in ((3, "40.0000"), (4, "20.0000")):
+        muestra = BatchMilkSample.objects.create(batch=batch, date=datetime.date(2026, mes, 2))
+        AnalysisResult.objects.create(milk_sample=muestra, analyte=analyte, value=Decimal(valor))
+
+    marzo = api_client.get(
+        reverse("farms:batch-target-check", args=[batch.pk]),
+        {"date_to": "2026-03-31"},
+    ).json()
+    abril = api_client.get(
+        reverse("farms:batch-target-check", args=[batch.pk]),
+        {"date_from": "2026-04-01"},
+    ).json()
+
+    assert marzo["profiles"][0]["analytes"][0]["status"] == "within"
+    assert abril["profiles"][0]["analytes"][0]["status"] == "below"
+
+
+@pytest.mark.django_db
+def test_la_comparacion_valida_las_fechas(api_client, batch):
+    response = api_client.get(
+        reverse("farms:batch-target-check", args=[batch.pk]),
+        {"date_from": "ayer"},
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_la_comparacion_declara_sus_dos_salvedades(api_client, batch, destino):
+    """Que el dato es sintético y que el veredicto depende de la ventana."""
+    body = api_client.get(reverse("farms:batch-target-check", args=[batch.pk])).json()
+
+    assert "sintéticos" in body["milk_analytes_notice"]
+    assert "ventana" in body["target_check_notice"]
