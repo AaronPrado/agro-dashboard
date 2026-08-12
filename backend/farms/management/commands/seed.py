@@ -115,6 +115,10 @@ class Command(BaseCommand):
             summary += self._ingest_milk_lab(farm_data)
             summary += self._ingest_milking_robot(rng, farm_data)
 
+        # El catálogo es global y sus rangos exigen analitos que declara el
+        # laboratorio de leche: va una sola vez, y después de las entregas.
+        summary += ingest.load_target_profiles()
+
         self.stdout.write(
             self.style.SUCCESS(
                 f"Sembrado: {summary.farms} altas de explotación, "
@@ -127,6 +131,8 @@ class Command(BaseCommand):
                 f"con {summary.analysis_results} resultados, "
                 f"{summary.milk_samples} muestras de leche de lote "
                 f"con {summary.milk_results} resultados, "
+                f"{summary.target_profiles} perfiles de destino "
+                f"con {summary.target_ranges} rangos objetivo, "
                 f"{summary.animals} altas de animal, "
                 f"{summary.daily_yields} producciones diarias, "
                 f"{summary.milk_records} controles, "

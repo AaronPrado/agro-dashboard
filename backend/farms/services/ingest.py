@@ -34,6 +34,8 @@ from farms.models import (
     RationIngredient,
     RawMaterial,
     Silage,
+    TargetProfile,
+    TargetRange,
 )
 from farms.services.canonical import (
     AnalysisResultRecord,
@@ -57,6 +59,7 @@ from farms.services.canonical import (
     Reject,
     SilageRecord,
 )
+from farms.services.target_profiles import TARGET_PROFILES, TargetProfileSpec, minimum_values
 
 BATCH_SIZE = 1000
 
@@ -93,6 +96,8 @@ class LoadSummary:
     analysis_results: int = 0
     milk_samples: int = 0
     milk_results: int = 0
+    target_profiles: int = 0
+    target_ranges: int = 0
 
     @property
     def loaded(self) -> int:
@@ -113,6 +118,8 @@ class LoadSummary:
             + self.analysis_results
             + self.milk_samples
             + self.milk_results
+            + self.target_profiles
+            + self.target_ranges
             + self.animals
             + self.daily_yields
             + self.milk_records
@@ -139,6 +146,8 @@ class LoadSummary:
         self.analysis_results += other.analysis_results
         self.milk_samples += other.milk_samples
         self.milk_results += other.milk_results
+        self.target_profiles += other.target_profiles
+        self.target_ranges += other.target_ranges
         return self
 
 
@@ -154,6 +163,7 @@ def clear() -> None:
     RationIngredient.objects.all().delete()  # protege Silage y RawMaterial
     BatchRation.objects.all().delete()  # protege Ration
     AnalysisResult.objects.all().delete()  # protege Analyte
+    TargetProfile.objects.all().delete()  # el CASCADE se lleva sus rangos, que protegen Analyte
     Farm.objects.all().delete()  # el CASCADE arrastra el resto del dominio
     RawMaterial.objects.all().delete()  # catálogo sembrado por el cuaderno
     Analyte.objects.all().delete()  # catálogo sembrado por el laboratorio
@@ -195,6 +205,48 @@ def load(batch: CanonicalBatch, *, reference: str = "") -> tuple[IngestionRun, L
     run.records_rejected = summary.rejected
     run.save(update_fields=["records_loaded", "records_rejected"])
     return run, summary
+
+
+@transaction.atomic
+def load_target_profiles(
+    specs: Iterable[TargetProfileSpec] = TARGET_PROFILES,
+) -> LoadSummary:
+    """Siembra el catálogo de perfiles de destino con sus rangos objetivo.
+
+    Único cargador público que no recibe un lote canónico ni abre una carga: un
+    perfil de destino no lo entrega ninguna fuente, lo mantiene la plataforma.
+    La firma distinta es deliberada, como en los catálogos de analitos y materias
+    primas — hace visible en el código dónde está la frontera entre lo que
+    alguien entrega y lo que aquí se decide.
+
+    Los analitos exigidos tienen que existir ya: quien define qué se mide es el
+    laboratorio que lo mide, y un perfil anclado a un analito desconocido se
+    cargaría con menos exigencias de las que declara.
+    """
+    specs = list(specs)
+    if not specs:
+        return LoadSummary()
+
+    summary = LoadSummary()
+    analytes = _analyte_ids({code for spec in specs for code in spec.demands})
+    for spec in specs:
+        profile, _ = TargetProfile.objects.update_or_create(
+            code=spec.code,
+            defaults={"name": spec.name, "description": spec.description},
+        )
+        summary.target_profiles += 1
+        demanded = [analytes[code] for code in spec.demands]
+        # Un perfil que deja de exigir un analito no puede conservar su rango: el
+        # upsert actualiza lo que sigue estando, pero no retira lo que ya sobra.
+        profile.ranges.exclude(analyte_id__in=demanded).delete()
+        for code, minimum in minimum_values(spec).items():
+            TargetRange.objects.update_or_create(
+                profile=profile,
+                analyte_id=analytes[code],
+                defaults={"min_value": minimum, "max_value": None},
+            )
+            summary.target_ranges += 1
+    return summary
 
 
 def _load_farms(
