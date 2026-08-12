@@ -193,6 +193,41 @@ prefijo `VITE_`. Apuntarla a una URL absoluta sirve para servir el cliente sin
 ese reenvío, pero entonces las peticiones sí son de origen cruzado y el backend
 necesita cabeceras CORS, que hoy no están configuradas.
 
+### Cómo el cliente pide los datos
+
+El acceso a la API está partido en tres piezas con responsabilidades distintas,
+y ningún componente llama a `fetch` por su cuenta:
+
+- **`src/api/client.js` es el transporte.** Resuelve la raíz de la API, monta la
+  cadena de consulta y traduce el fallo a una excepción. Hacen falta dos
+  comprobaciones y no una, porque `fetch` **no rechaza la promesa ante un 404 o
+  un 500**: solo rechaza si la petición no llega a completarse. El fallo de red y
+  el error HTTP desembocan ambos en un `ApiError` con su `status`, de modo que
+  quien consume tiene un único camino de error.
+- **Un módulo por recurso** (`src/api/animals.js`, `src/api/farms.js`) declara
+  qué parámetros admite cada endpoint, en lista blanca. Añadir un filtro es un
+  cambio deliberado y visible, no un efecto colateral de lo que envíe el
+  llamante.
+- **`src/hooks/useApiResource.js` es el ciclo de vida de la petición** dentro de
+  React: expone la carga, el error y el resultado, y limpia el efecto al
+  desmontar o al cambiar de parámetro.
+
+Ese hook resuelve un problema que no es visible en el camino feliz: **una
+respuesta que llega tarde no puede pintarse sobre una petición más reciente**. Al
+cambiar de página, la petición anterior se aborta y el resultado que ya venía en
+camino se descarta, porque el estado guarda junto al dato la petición que lo
+produjo y solo se pinta lo que corresponde a la vigente. Así la pantalla nunca
+muestra datos de un parámetro distinto del que indica.
+
+Los tres estados —cargando, error y vacío— son explícitos y distintos entre sí.
+El vacío lo decide cada pantalla y no el hook: "la API respondió y no hay nada"
+tiene una forma distinta en un listado paginado que en una serie temporal, y
+confundirlo con "aún no ha llegado nada" pintaría el mensaje de vacío durante
+cada carga.
+
+El cliente **no calcula**: medias, totales, conteos y los enlaces de paginación
+vienen resueltos del backend, y la pantalla se limita a pintarlos.
+
 ## API
 
 Todos los endpoints son de **solo lectura**: los datos entran por la capa de

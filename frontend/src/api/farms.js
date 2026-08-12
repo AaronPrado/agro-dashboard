@@ -1,5 +1,5 @@
 import { requestJson } from './client.js'
 
-export function listFarms({ signal } = {}) {
-    return requestJson('/farms/', { signal })
+export function listFarms({ page } = {}, { signal } = {}) {
+    return requestJson('/farms/', { params: { page }, signal })
 }
