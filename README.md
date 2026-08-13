@@ -262,6 +262,34 @@ Cuatro decisiones de esa pantalla, que son las que explican lo que se ve:
   son una interpretación de esta propuesta, no la exigencia de un comprador— se
   pinta junto a la comparación, no solo viaja en el JSON.
 
+#### La gráfica del hilo
+
+Sobre un mismo eje temporal se pintan la producción diaria del lote, el analito
+de leche que se elija en el desplegable y, de fondo, una banda por periodo de
+ración con el color que marca también su fila en la tabla de alimentación. Es la
+pantalla donde se ve si un cambio de ración va seguido de un cambio en la
+composición de la leche.
+
+- **Cada serie conserva su grano y por eso son dos gráficos, no dos líneas en
+  uno.** La producción es diaria y la muestra de leche un hecho mensual;
+  superponerlas obligaría a rellenar los días sin muestra con un valor que nadie
+  ha medido. El eje horizontal es numérico —fechas como instantes— y su dominio
+  se calcula sobre las dos series y se impone a los dos gráficos: así una banda
+  cae en la misma posición en ambos, y el límite de un periodo de ración no
+  necesita coincidir con un día que tenga producción.
+- **Las dos secciones comparten una sola petición.** La gráfica y la tabla de
+  alimentación salen de la misma llamada a la serie temporal del lote, que ya
+  devuelve las tres series y la ventana efectiva.
+- **La advertencia de dato sintético se pinta bajo la gráfica**, con el texto que
+  viaja en la propia respuesta, de modo que el aviso y el dato no puedan
+  separarse.
+- **Los supuestos de la gráfica están a la vista** en un desplegable: que el
+  contraste entre raciones lo planta el generador con rangos más marcados que los
+  del contraste que se modela y que satura en los extremos del rango publicado;
+  que la pantalla asume que la leche se muestrea por lote y que el rebaño se
+  ordeña en sala con una única ración por lote; y que cada muestra es un hecho en
+  su fecha y no un valor vigente todo el mes.
+
 ## API
 
 Todos los endpoints son de **solo lectura**: los datos entran por la capa de
