@@ -347,6 +347,29 @@ def test_el_listado_de_lotes_se_filtra_por_explotacion(api_client, batch, farm):
 
 
 @pytest.mark.django_db
+def test_el_listado_de_lotes_distingue_explotaciones_homonimas(api_client, batch, farm):
+    """Dos explotaciones pueden llamarse igual: lo que las separa es el código.
+
+    El nombre de la explotación no es único —solo lo es `code`—, así que un
+    consumidor que agrupe lotes por nombre fundiría dos explotaciones distintas
+    en una. El código viaja para que no tenga que hacerlo.
+    """
+    homonima = Farm.objects.create(
+        name=farm.name,
+        code="casa-grande-vella",
+        municipality="Chantada",
+        province="Lugo",
+    )
+    AnimalBatch.objects.create(farm=homonima, name="Alta producción")
+
+    response = api_client.get(reverse("farms:batch-list"))
+
+    lotes = response.json()["results"]
+    assert [lote["farm_name"] for lote in lotes] == ["Casa Grande", "Casa Grande"]
+    assert {lote["farm_code"] for lote in lotes} == {"casa-grande", "casa-grande-vella"}
+
+
+@pytest.mark.django_db
 def test_una_pagina_de_lotes_no_dispara_consultas_por_fila(
     api_client, batch, farm, django_assert_num_queries
 ):

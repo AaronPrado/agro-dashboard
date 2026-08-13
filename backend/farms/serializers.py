@@ -131,12 +131,21 @@ class AnimalBatchSerializer(serializers.ModelSerializer):
     """
 
     farm_name = serializers.CharField(source="farm.name", read_only=True)
+    farm_code = serializers.CharField(source="farm.code", read_only=True)
     active_animals = serializers.IntegerField(read_only=True)
     current_ration = serializers.CharField(read_only=True)
 
     class Meta:
         model = AnimalBatch
-        fields = ["id", "farm", "farm_name", "name", "active_animals", "current_ration"]
+        fields = [
+            "id",
+            "farm",
+            "farm_name",
+            "farm_code",
+            "name",
+            "active_animals",
+            "current_ration",
+        ]
 
 
 class AnalyteAverageSerializer(serializers.Serializer):
