@@ -1,15 +1,7 @@
 import { getBatchSummary } from '../api/batches.js'
+import { formatDecimal } from '../format.js'
 import { useBatchResource } from '../hooks/useBatchResource.js'
 import { ErrorState } from './ErrorState.jsx'
-
-const decimal = new Intl.NumberFormat('es-ES', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-
-function format(value) {
-  return value === null ? '—' : decimal.format(Number(value))
-}
 
 export function BatchSummary({ batchId, dateFrom, dateTo }) {
   const { data, error, isLoading, refetch } = useBatchResource(getBatchSummary, batchId, {
@@ -47,19 +39,19 @@ export function BatchSummary({ batchId, dateFrom, dateTo }) {
         <dl className="metrics">
           <div>
             <dt>Litros totales</dt>
-            <dd>{format(data.total_liters)}</dd>
+            <dd>{formatDecimal(data.total_liters)}</dd>
           </div>
           <div>
             <dt>Media diaria por animal</dt>
-            <dd>{format(data.avg_daily_liters)} l</dd>
+            <dd>{formatDecimal(data.avg_daily_liters)} l</dd>
           </div>
           <div>
             <dt>Grasa media</dt>
-            <dd>{format(data.avg_fat_pct)} %</dd>
+            <dd>{formatDecimal(data.avg_fat_pct)} %</dd>
           </div>
           <div>
             <dt>Proteína media</dt>
-            <dd>{format(data.avg_protein_pct)} %</dd>
+            <dd>{formatDecimal(data.avg_protein_pct)} %</dd>
           </div>
           <div>
             <dt>Controles sobre el límite de células</dt>

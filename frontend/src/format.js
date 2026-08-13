@@ -32,9 +32,25 @@ const monthLabel = new Intl.DateTimeFormat('es-ES', {
 
 const numberLabel = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 2 })
 
+const decimalLabel = new Intl.NumberFormat('es-ES', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
 /** Rotula una marca de un eje de valores. */
 export function formatNumber(value) {
   return numberLabel.format(value)
+}
+
+/**
+ * Presenta con dos decimales fijos un valor que llega como cadena desde DRF.
+ *
+ * Se distingue de `formatNumber` en la escala: un eje omite los decimales que no
+ * hacen falta, mientras que en una cifra medida la escala es parte del dato. Un
+ * `null` es "no medido" y se pinta como tal, no como cero.
+ */
+export function formatDecimal(value) {
+  return value === null ? '—' : decimalLabel.format(Number(value))
 }
 
 /** Rotula un punto del eje temporal. */
