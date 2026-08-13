@@ -1,84 +1,45 @@
 import { useCallback, useState } from 'react'
-import { listAnimals } from './api/animals.js'
+import { listBatches } from './api/batches.js'
+import { BatchPicker } from './components/BatchPicker.jsx'
 import { useApiResource } from './hooks/useApiResource.js'
 
 function App() {
-  const [pageNumber, setPageNumber] = useState(1)
+  const [batchId, setBatchId] = useState('')
 
-  const request = useCallback(
-    (options) => listAnimals({ page: pageNumber }, options),
-    [pageNumber],
-  )
+  const request = useCallback((options) => listBatches({}, options), [])
   const { data: page, error, isLoading } = useApiResource(request)
+
+  const batches = page?.results ?? []
+  const selected = batches.find((batch) => String(batch.id) === batchId) ?? null
 
   return (
     <main>
-      <h1>Animales</h1>
+      <h1>Vista de lote</h1>
 
-      <nav className="pagination" aria-label="Paginación del censo">
-        <button
-          type="button"
-          onClick={() => setPageNumber((current) => current - 1)}
-          disabled={!page?.previous}
-        >
-          ← Anterior
-        </button>
-        <button
-          type="button"
-          onClick={() => setPageNumber((current) => current + 1)}
-          disabled={!page?.next}
-        >
-          Siguiente →
-        </button>
-        <span className="pagination__position">Página {pageNumber}</span>
-      </nav>
-
-      {isLoading && <p className="status">Cargando animales…</p>}
+      {isLoading && <p className="status">Cargando lotes…</p>}
 
       {error && (
         <div className="status status--error" role="alert">
-          <strong>No se han podido cargar los animales.</strong>
+          <strong>No se han podido cargar los lotes.</strong>
           <p className="status__detail">{error.message}</p>
         </div>
       )}
 
-      {page && page.results.length === 0 && (
-        <p className="status">
-          La API responde, pero no hay ningún animal dado de alta.
+      {page && batches.length === 0 && (
+        <p className="status">La API responde, pero no hay ningún lote dado de alta.</p>
+      )}
+
+      {batches.length > 0 && (
+        <BatchPicker batches={batches} value={batchId} onChange={setBatchId} />
+      )}
+
+      {page && page.count > batches.length && (
+        <p className="picker__note">
+          Se muestran {batches.length} de {page.count} lotes.
         </p>
       )}
 
-      {page && page.results.length > 0 && (
-        <table>
-          <caption>
-            {page.count} animales en la API; se muestran {page.results.length}.
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Crotal</th>
-              <th scope="col">Explotación</th>
-              <th scope="col">Raza</th>
-              <th scope="col">Partos</th>
-              <th scope="col">Último parto</th>
-              <th scope="col">Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {page.results.map((animal) => (
-              <tr key={animal.id}>
-                <td>
-                  <code>{animal.ear_tag}</code>
-                </td>
-                <td>{animal.farm_name}</td>
-                <td>{animal.breed_display}</td>
-                <td>{animal.lactation_number}</td>
-                <td>{animal.last_calving_date ?? '—'}</td>
-                <td>{animal.is_active ? 'Activa' : 'Baja'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      {selected && <p className="status">Lote seleccionado: {selected.name}</p>}
     </main>
   )
 }
