@@ -69,7 +69,13 @@ function analytesOf(milkSamples) {
   return analytes
 }
 
-export function BatchChart({ window: dataWindow, dailyYields, milkSamples, rationPeriods }) {
+export function BatchChart({
+  window: dataWindow,
+  dailyYields,
+  milkSamples,
+  rationPeriods,
+  notice,
+}) {
   const [chosen, setChosen] = useState('')
 
   const analytes = analytesOf(milkSamples)
@@ -199,6 +205,37 @@ export function BatchChart({ window: dataWindow, dailyYields, milkSamples, ratio
               </LineChart>
             </ResponsiveContainer>
           </div>
+
+          <p className="notice">{notice}</p>
+
+          <details className="reading">
+            <summary>Supuestos de esta gráfica</summary>
+            <ul>
+              <li>
+                <strong>El contraste entre raciones es más ancho que el real, y satura.</strong>{' '}
+                El generador lo planta con los rangos del contraste entre pasto y ración
+                completa, más marcado que el contraste entre ensilados que aquí se modela, y
+                los valores tocan los extremos del rango publicado de cada analito. Por eso el
+                cambio aparece como un escalón y no como una transición.
+              </li>
+              <li>
+                <strong>La gráfica supone que la leche se muestrea por lote.</strong> Ese dato
+                puede venir de un muestreo específico, de un segundo tanque, o de agregar por
+                lote el análisis por vaca de un robot de ordeño — esta última vía es la misma
+                integración de datos que sostiene el resto de la propuesta.
+              </li>
+              <li>
+                <strong>Supone también sala de ordeño con una única ración por lote.</strong>{' '}
+                Con robot, parte del pienso se asigna según la producción de cada vaca, y
+                entonces la relación entre ración y leche deja de leerse en una sola dirección.
+              </li>
+              <li>
+                <strong>Cada muestra es un hecho en su fecha</strong>, no un valor vigente todo
+                el mes: al recorrer la producción se resalta la muestra más próxima, que puede
+                estar a semanas del día señalado.
+              </li>
+            </ul>
+          </details>
         </>
       )}
     </>

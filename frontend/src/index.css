@@ -233,6 +233,29 @@ code {
   vertical-align: -0.1rem;
 }
 
+.reading {
+  margin: 0.5rem 0 1rem;
+  padding: 0.75rem;
+  border: 1px solid #dbe1e8;
+  border-radius: 0.375rem;
+  background-color: #fff;
+  font-size: 0.9rem;
+}
+
+.reading summary {
+  cursor: pointer;
+  color: #52606d;
+}
+
+.reading ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.reading li + li {
+  margin-top: 0.5rem;
+}
+
 .status {
   padding: 1rem;
   border-radius: 0.375rem;

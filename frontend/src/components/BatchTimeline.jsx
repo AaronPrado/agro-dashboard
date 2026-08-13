@@ -41,6 +41,7 @@ export function BatchTimeline({ batchId, dateFrom, dateTo }) {
           dailyYields={data.daily_yields}
           milkSamples={data.milk_samples}
           rationPeriods={data.ration_periods}
+          notice={data.milk_analytes_notice}
         />
       )}
 
