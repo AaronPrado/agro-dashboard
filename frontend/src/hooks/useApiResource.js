@@ -1,17 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 /**
  * Ejecuta una petición a la API y expone su carga, su error y su resultado.
  *
  * `request` debe ser estable entre renders —el llamante la envuelve en
- * `useCallback`—, porque su identidad es a la vez la dependencia del efecto y
- * la clave con la que se descarta el resultado de una petición ya superada.
+ * `useCallback`—, porque su identidad forma parte de la clave con la que se
+ * descarta el resultado de una petición ya superada.
  *
  * @param {(options: {signal: AbortSignal}) => Promise<unknown>} request
- * @returns {{data: unknown｜null, error: Error｜null, isLoading: boolean}}
+ * @returns {{data: unknown｜null, error: Error｜null, isLoading: boolean, refetch: () => void}}
  */
 export function useApiResource(request) {
-  const [state, setState] = useState({ request: null, data: null, error: null })
+  const [attempt, setAttempt] = useState(0)
+  const [state, setState] = useState({ request: null, attempt: -1, data: null, error: null })
 
   useEffect(() => {
     const controller = new AbortController()
@@ -19,11 +20,11 @@ export function useApiResource(request) {
 
     request({ signal: controller.signal })
       .then((data) => {
-        if (!cancelled) setState({ request, data, error: null })
+        if (!cancelled) setState({ request, attempt, data, error: null })
       })
       .catch((error) => {
         if (!cancelled && error.name !== 'AbortError') {
-          setState({ request, data: null, error })
+          setState({ request, attempt, data: null, error })
         }
       })
 
@@ -34,15 +35,21 @@ export function useApiResource(request) {
       cancelled = true
       controller.abort()
     }
-  }, [request])
+  }, [request, attempt])
 
-  // La respuesta guardada pertenece a la petición que la produjo. Si no es la
-  // vigente, lo que hay que pintar es la carga de la nueva, sin escribir estado.
-  const isStale = state.request !== request
+  // Reintentar es repetir un efecto cuyas entradas no han cambiado, y eso solo
+  // se consigue moviendo una dependencia propia.
+  const refetch = useCallback(() => setAttempt((previous) => previous + 1), [])
+
+  // La respuesta guardada pertenece a la petición y al intento que la
+  // produjeron. Si no son los vigentes, lo que hay que pintar es la carga de la
+  // nueva, sin escribir estado.
+  const isStale = state.request !== request || state.attempt !== attempt
 
   return {
     data: isStale ? null : state.data,
     error: isStale ? null : state.error,
     isLoading: isStale,
+    refetch,
   }
 }

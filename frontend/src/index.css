@@ -67,7 +67,8 @@ code {
 }
 
 .pagination button,
-.window button {
+.window button,
+.status--error button {
   font: inherit;
   padding: 0.4rem 0.9rem;
   border: 1px solid #b9c2cc;
@@ -77,8 +78,13 @@ code {
 }
 
 .pagination button:hover:not(:disabled),
-.window button:hover:not(:disabled) {
+.window button:hover:not(:disabled),
+.status--error button:hover {
   background-color: #eef1f5;
+}
+
+.status--error button {
+  margin-top: 0.75rem;
 }
 
 .pagination button:disabled,

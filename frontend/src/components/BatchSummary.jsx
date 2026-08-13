@@ -1,5 +1,6 @@
 import { getBatchSummary } from '../api/batches.js'
 import { useBatchResource } from '../hooks/useBatchResource.js'
+import { ErrorState } from './ErrorState.jsx'
 
 const decimal = new Intl.NumberFormat('es-ES', {
   minimumFractionDigits: 2,
@@ -11,7 +12,7 @@ function format(value) {
 }
 
 export function BatchSummary({ batchId, dateFrom, dateTo }) {
-  const { data, error, isLoading } = useBatchResource(getBatchSummary, batchId, {
+  const { data, error, isLoading, refetch } = useBatchResource(getBatchSummary, batchId, {
     dateFrom,
     dateTo,
   })
@@ -20,10 +21,11 @@ export function BatchSummary({ batchId, dateFrom, dateTo }) {
 
   if (error) {
     return (
-      <div className="status status--error" role="alert">
-        <strong>No se ha podido cargar el resumen del lote.</strong>
-        <p className="status__detail">{error.message}</p>
-      </div>
+      <ErrorState
+        title="No se ha podido cargar el resumen del lote."
+        error={error}
+        onRetry={refetch}
+      />
     )
   }
 

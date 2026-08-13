@@ -3,9 +3,10 @@ import { formatDate } from '../format.js'
 import { useBatchResource } from '../hooks/useBatchResource.js'
 import { BatchChart } from './BatchChart.jsx'
 import { BatchRations } from './BatchRations.jsx'
+import { ErrorState } from './ErrorState.jsx'
 
 export function BatchTimeline({ batchId, dateFrom, dateTo }) {
-  const { data, error, isLoading } = useBatchResource(getBatchTimeline, batchId, {
+  const { data, error, isLoading, refetch } = useBatchResource(getBatchTimeline, batchId, {
     dateFrom,
     dateTo,
   })
@@ -14,10 +15,11 @@ export function BatchTimeline({ batchId, dateFrom, dateTo }) {
 
   if (error) {
     return (
-      <div className="status status--error" role="alert">
-        <strong>No se ha podido cargar la serie del lote.</strong>
-        <p className="status__detail">{error.message}</p>
-      </div>
+      <ErrorState
+        title="No se ha podido cargar la serie del lote."
+        error={error}
+        onRetry={refetch}
+      />
     )
   }
 

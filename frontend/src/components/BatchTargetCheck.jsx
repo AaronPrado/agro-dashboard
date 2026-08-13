@@ -1,5 +1,6 @@
 import { getBatchTargetCheck } from '../api/batches.js'
 import { useBatchResource } from '../hooks/useBatchResource.js'
+import { ErrorState } from './ErrorState.jsx'
 
 const STATUS = {
   within: { label: 'Dentro de rango', modifier: 'within' },
@@ -16,7 +17,7 @@ function requirement(minValue, maxValue) {
 }
 
 export function BatchTargetCheck({ batchId, dateFrom, dateTo }) {
-  const { data, error, isLoading } = useBatchResource(getBatchTargetCheck, batchId, {
+  const { data, error, isLoading, refetch } = useBatchResource(getBatchTargetCheck, batchId, {
     dateFrom,
     dateTo,
   })
@@ -25,10 +26,11 @@ export function BatchTargetCheck({ batchId, dateFrom, dateTo }) {
 
   if (error) {
     return (
-      <div className="status status--error" role="alert">
-        <strong>No se ha podido comparar el lote con los perfiles de destino.</strong>
-        <p className="status__detail">{error.message}</p>
-      </div>
+      <ErrorState
+        title="No se ha podido comparar el lote con los perfiles de destino."
+        error={error}
+        onRetry={refetch}
+      />
     )
   }
 

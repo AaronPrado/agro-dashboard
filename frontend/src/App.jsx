@@ -5,6 +5,7 @@ import { BatchSummary } from './components/BatchSummary.jsx'
 import { BatchTargetCheck } from './components/BatchTargetCheck.jsx'
 import { BatchTimeline } from './components/BatchTimeline.jsx'
 import { DateWindow } from './components/DateWindow.jsx'
+import { ErrorState } from './components/ErrorState.jsx'
 import { useApiResource } from './hooks/useApiResource.js'
 
 function App() {
@@ -13,7 +14,7 @@ function App() {
   const [dateTo, setDateTo] = useState('')
 
   const request = useCallback((options) => listBatches({}, options), [])
-  const { data: page, error, isLoading } = useApiResource(request)
+  const { data: page, error, isLoading, refetch } = useApiResource(request)
 
   const batches = page?.results ?? []
   const selected = batches.find((batch) => String(batch.id) === batchId) ?? null
@@ -29,10 +30,11 @@ function App() {
       {isLoading && <p className="status">Cargando lotes…</p>}
 
       {error && (
-        <div className="status status--error" role="alert">
-          <strong>No se han podido cargar los lotes.</strong>
-          <p className="status__detail">{error.message}</p>
-        </div>
+        <ErrorState
+          title="No se han podido cargar los lotes."
+          error={error}
+          onRetry={refetch}
+        />
       )}
 
       {page && batches.length === 0 && (
