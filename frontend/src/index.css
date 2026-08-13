@@ -29,13 +29,6 @@ table {
   border-collapse: collapse;
 }
 
-caption {
-  text-align: left;
-  padding-bottom: 0.5rem;
-  color: #52606d;
-  font-size: 0.9rem;
-}
-
 th,
 td {
   text-align: left;
@@ -59,14 +52,6 @@ code {
   font-size: 0.9em;
 }
 
-.pagination {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin: 1rem 0;
-}
-
-.pagination button,
 .window button,
 .status--error button {
   font: inherit;
@@ -77,7 +62,6 @@ code {
   cursor: pointer;
 }
 
-.pagination button:hover:not(:disabled),
 .window button:hover:not(:disabled),
 .status--error button:hover {
   background-color: #eef1f5;
@@ -87,15 +71,9 @@ code {
   margin-top: 0.75rem;
 }
 
-.pagination button:disabled,
 .window button:disabled {
   color: #9aa5b1;
   cursor: not-allowed;
-}
-
-.pagination__position {
-  color: #52606d;
-  font-size: 0.9rem;
 }
 
 .picker,

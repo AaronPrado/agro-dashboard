@@ -204,15 +204,15 @@ y ningún componente llama a `fetch` por su cuenta:
   un 500**: solo rechaza si la petición no llega a completarse. El fallo de red y
   el error HTTP desembocan ambos en un `ApiError` con su `status`, de modo que
   quien consume tiene un único camino de error.
-- **Un módulo por recurso** (`src/api/batches.js`, `src/api/animals.js`,
-  `src/api/farms.js`) declara qué parámetros admite cada endpoint, en lista
-  blanca. Añadir un filtro es un cambio deliberado y visible, no un efecto
-  colateral de lo que envíe el llamante. Es además donde se traduce el
-  vocabulario de la API, de modo que ningún componente escriba `date_from`.
+- **Un módulo por recurso** (`src/api/batches.js`) declara qué parámetros admite
+  cada endpoint, en lista blanca. Añadir un filtro es un cambio deliberado y
+  visible, no un efecto colateral de lo que envíe el llamante. Es además donde se
+  traduce el vocabulario de la API, de modo que ningún componente escriba
+  `date_from`.
 - **`src/hooks/useApiResource.js` es el ciclo de vida de la petición** dentro de
-  React: expone la carga, el error y el resultado, y limpia el efecto al
-  desmontar o al cambiar de parámetro. `src/hooks/useBatchResource.js` lo
-  envuelve para los tres recursos del lote, que comparten firma: así la
+  React: expone la carga, el error, el resultado y un `refetch`, y limpia el
+  efecto al desmontar o al cambiar de parámetro. `src/hooks/useBatchResource.js`
+  lo envuelve para los tres recursos del lote, que comparten firma: así la
   estabilización de la petición se escribe una vez y no en cada llamada.
 
 Ese hook resuelve un problema que no es visible en el camino feliz: **una
@@ -229,8 +229,15 @@ tiene una forma distinta en un listado paginado que en una serie temporal, y
 confundirlo con "aún no ha llegado nada" pintaría el mensaje de vacío durante
 cada carga.
 
-El cliente **no calcula**: medias, totales, conteos y los enlaces de paginación
-vienen resueltos del backend, y la pantalla se limita a pintarlos.
+**Un fallo de carga tiene salida sin recargar la página.** Cada sección pide lo
+suyo por separado, así que un error afecta solo a la suya y se reintenta desde
+ella: el hook lleva un contador de intentos que forma parte de la clave del
+estado, de modo que reintentar vuelve a ejecutar la petición aunque sus
+parámetros no hayan cambiado, y mientras vuela la nueva se pinta la carga en
+lugar del error anterior.
+
+El cliente **no calcula**: medias, totales y conteos vienen resueltos del
+backend, y la pantalla se limita a pintarlos.
 
 ### La vista de lote
 
