@@ -77,8 +77,8 @@ function App() {
             </p>
           ) : (
             <>
-              <BatchTimeline batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
               <BatchSummary batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
+              <BatchTimeline batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
               <BatchTargetCheck batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
             </>
           )}
