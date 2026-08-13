@@ -3,21 +3,28 @@ import { formatDate } from '../format.js'
 import { useBatchResource } from '../hooks/useBatchResource.js'
 import { BatchChart } from './BatchChart.jsx'
 import { BatchRations } from './BatchRations.jsx'
+import { ErrorState } from './ErrorState.jsx'
 
 export function BatchTimeline({ batchId, dateFrom, dateTo }) {
-  const { data, error, isLoading } = useBatchResource(getBatchTimeline, batchId, {
+  const { data, error, isLoading, refetch } = useBatchResource(getBatchTimeline, batchId, {
     dateFrom,
     dateTo,
   })
 
-  if (isLoading) return <p className="status">Cargando la serie del lote…</p>
+  if (isLoading)
+    return (
+      <p className="status" role="status">
+        Cargando la serie del lote…
+      </p>
+    )
 
   if (error) {
     return (
-      <div className="status status--error" role="alert">
-        <strong>No se ha podido cargar la serie del lote.</strong>
-        <p className="status__detail">{error.message}</p>
-      </div>
+      <ErrorState
+        title="No se ha podido cargar la serie del lote."
+        error={error}
+        onRetry={refetch}
+      />
     )
   }
 
@@ -35,6 +42,8 @@ export function BatchTimeline({ batchId, dateFrom, dateTo }) {
             )} · ${days} días con producción.`}
       </p>
 
+      <BatchRations rationPeriods={data.ration_periods} />
+
       {days > 0 && (
         <BatchChart
           window={data.window}
@@ -44,8 +53,6 @@ export function BatchTimeline({ batchId, dateFrom, dateTo }) {
           notice={data.milk_analytes_notice}
         />
       )}
-
-      <BatchRations rationPeriods={data.ration_periods} />
     </>
   )
 }

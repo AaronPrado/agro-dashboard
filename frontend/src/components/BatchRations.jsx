@@ -13,33 +13,37 @@ export function BatchRations({ rationPeriods }) {
           figura arriba.
         </p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Ración</th>
-              <th scope="col">Formulada</th>
-              <th scope="col">Desde</th>
-              <th scope="col">Hasta</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rationPeriods.map((period, index) => (
-              <tr key={`${period.ration_id}-${period.date_from}`}>
-                <td>
-                  <span
-                    className="band"
-                    style={{ backgroundColor: bandColor(index) }}
-                    aria-hidden="true"
-                  />
-                  {period.ration}
-                </td>
-                <td>{formatDate(period.formulated_on)}</td>
-                <td>{formatDate(period.date_from)}</td>
-                <td>{period.date_to === null ? 'Vigente' : formatDate(period.date_to)}</td>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Ración</th>
+                <th scope="col">Formulada</th>
+                <th scope="col">Desde</th>
+                <th scope="col">Hasta</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rationPeriods.map((period, index) => (
+                <tr key={`${period.ration_id}-${period.date_from}`}>
+                  <td>
+                    <span
+                      className="band"
+                      style={{ backgroundColor: bandColor(index) }}
+                      aria-hidden="true"
+                    />
+                    {period.ration}
+                  </td>
+                  <td>{formatDate(period.formulated_on)}</td>
+                  <td>{formatDate(period.date_from)}</td>
+                  <td>
+                    {period.date_to === null ? 'Vigente' : formatDate(period.date_to)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   )

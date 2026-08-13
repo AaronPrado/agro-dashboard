@@ -120,7 +120,11 @@ export function BatchChart({
     <>
       <h3 className="batch__section">Ración, producción y calidad en el tiempo</h3>
 
-      <div className="chart">
+      <div
+        className="chart"
+        role="img"
+        aria-label="Producción diaria del lote en litros, con una banda de color por periodo de ración. Esos periodos, con sus fechas, están en la tabla de alimentación."
+      >
         <ResponsiveContainer width="100%" height={200}>
           <LineChart
             data={production}
@@ -174,7 +178,11 @@ export function BatchChart({
             </select>
           </div>
 
-          <div className="chart">
+          <div
+            className="chart"
+            role="img"
+            aria-label={`${selected.name}, en ${selected.unit}, por fecha de muestra, sobre las mismas bandas de ración. Los valores medios están en la tabla del perfil analítico.`}
+          >
             <ResponsiveContainer width="100%" height={200}>
               <LineChart
                 data={quality}

@@ -5,7 +5,13 @@ import { BatchSummary } from './components/BatchSummary.jsx'
 import { BatchTargetCheck } from './components/BatchTargetCheck.jsx'
 import { BatchTimeline } from './components/BatchTimeline.jsx'
 import { DateWindow } from './components/DateWindow.jsx'
+import { ErrorState } from './components/ErrorState.jsx'
 import { useApiResource } from './hooks/useApiResource.js'
+
+/** Un año de menos de cuatro cifras es un año a medio teclear, no una fecha. */
+function isPartialYear(value) {
+  return value !== '' && Number(value.slice(0, 4)) < 1000
+}
 
 function App() {
   const [batchId, setBatchId] = useState('')
@@ -13,26 +19,36 @@ function App() {
   const [dateTo, setDateTo] = useState('')
 
   const request = useCallback((options) => listBatches({}, options), [])
-  const { data: page, error, isLoading } = useApiResource(request)
+  const { data: page, error, isLoading, refetch } = useApiResource(request)
 
   const batches = page?.results ?? []
   const selected = batches.find((batch) => String(batch.id) === batchId) ?? null
 
   // Comparar cadenas ISO equivale a comparar fechas, y es el único 400 que estos
   // controles pueden producir: el navegador emite fecha completa o cadena vacía.
-  const invalidWindow = dateFrom !== '' && dateTo !== '' && dateFrom > dateTo
+  const invertedWindow = dateFrom !== '' && dateTo !== '' && dateFrom > dateTo
+
+  // Camino de 2027 el campo emite 0002, 0020 y 0202, todas fechas legales que
+  // no invierten el rango: sin esto, teclear un año son tres consultas de más.
+  const partialWindow = isPartialYear(dateFrom) || isPartialYear(dateTo)
+  const unusableWindow = invertedWindow || partialWindow
 
   return (
     <main>
       <h1>Vista de lote</h1>
 
-      {isLoading && <p className="status">Cargando lotes…</p>}
+      {isLoading && (
+        <p className="status" role="status">
+          Cargando lotes…
+        </p>
+      )}
 
       {error && (
-        <div className="status status--error" role="alert">
-          <strong>No se han podido cargar los lotes.</strong>
-          <p className="status__detail">{error.message}</p>
-        </div>
+        <ErrorState
+          title="No se han podido cargar los lotes."
+          error={error}
+          onRetry={refetch}
+        />
       )}
 
       {page && batches.length === 0 && (
@@ -59,7 +75,7 @@ function App() {
           <DateWindow
             dateFrom={dateFrom}
             dateTo={dateTo}
-            invalid={invalidWindow}
+            invalid={unusableWindow}
             onDateFromChange={setDateFrom}
             onDateToChange={setDateTo}
             onReset={() => {
@@ -68,10 +84,11 @@ function App() {
             }}
           />
 
-          {invalidWindow ? (
+          {unusableWindow ? (
             <p className="status">
-              La fecha inicial es posterior a la final: corrige la ventana para volver a
-              consultar.
+              {invertedWindow
+                ? 'La fecha inicial es posterior a la final: corrige la ventana para volver a consultar.'
+                : 'El año de una de las fechas está a medio escribir: la consulta sale en cuanto esté completo.'}
             </p>
           ) : (
             <>

@@ -1,5 +1,6 @@
 import { getBatchTargetCheck } from '../api/batches.js'
 import { useBatchResource } from '../hooks/useBatchResource.js'
+import { ErrorState } from './ErrorState.jsx'
 
 const STATUS = {
   within: { label: 'Dentro de rango', modifier: 'within' },
@@ -16,19 +17,25 @@ function requirement(minValue, maxValue) {
 }
 
 export function BatchTargetCheck({ batchId, dateFrom, dateTo }) {
-  const { data, error, isLoading } = useBatchResource(getBatchTargetCheck, batchId, {
+  const { data, error, isLoading, refetch } = useBatchResource(getBatchTargetCheck, batchId, {
     dateFrom,
     dateTo,
   })
 
-  if (isLoading) return <p className="status">Comparando con los perfiles de destino…</p>
+  if (isLoading)
+    return (
+      <p className="status" role="status">
+        Comparando con los perfiles de destino…
+      </p>
+    )
 
   if (error) {
     return (
-      <div className="status status--error" role="alert">
-        <strong>No se ha podido comparar el lote con los perfiles de destino.</strong>
-        <p className="status__detail">{error.message}</p>
-      </div>
+      <ErrorState
+        title="No se ha podido comparar el lote con los perfiles de destino."
+        error={error}
+        onRetry={refetch}
+      />
     )
   }
 
@@ -52,47 +59,51 @@ export function BatchTargetCheck({ batchId, dateFrom, dateTo }) {
               </p>
               <p className="batch__note">{profile.description}</p>
 
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col">Analito</th>
-                    <th scope="col" className="numeric">
-                      Medido
-                    </th>
-                    <th scope="col" className="numeric">
-                      Exigido
-                    </th>
-                    <th scope="col" className="numeric">
-                      Muestras
-                    </th>
-                    <th scope="col">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {profile.analytes.map((analyte) => {
-                    const status = STATUS[analyte.status] ?? {
-                      label: analyte.status,
-                      modifier: 'no-data',
-                    }
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Analito</th>
+                      <th scope="col" className="numeric">
+                        Medido
+                      </th>
+                      <th scope="col" className="numeric">
+                        Exigido
+                      </th>
+                      <th scope="col" className="numeric">
+                        Muestras
+                      </th>
+                      <th scope="col">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {profile.analytes.map((analyte) => {
+                      const status = STATUS[analyte.status] ?? {
+                        label: analyte.status,
+                        modifier: 'no-data',
+                      }
 
-                    return (
-                      <tr key={analyte.code}>
-                        <td>
-                          {analyte.name} ({analyte.unit})
-                        </td>
-                        <td className="numeric">{analyte.avg_value ?? '—'}</td>
-                        <td className="numeric">
-                          {requirement(analyte.min_value, analyte.max_value)}
-                        </td>
-                        <td className="numeric">{analyte.samples}</td>
-                        <td>
-                          <span className={`badge badge--${status.modifier}`}>{status.label}</span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                      return (
+                        <tr key={analyte.code}>
+                          <td>
+                            {analyte.name} ({analyte.unit})
+                          </td>
+                          <td className="numeric">{analyte.avg_value ?? '—'}</td>
+                          <td className="numeric">
+                            {requirement(analyte.min_value, analyte.max_value)}
+                          </td>
+                          <td className="numeric">{analyte.samples}</td>
+                          <td>
+                            <span className={`badge badge--${status.modifier}`}>
+                              {status.label}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </article>
           ))}
 
