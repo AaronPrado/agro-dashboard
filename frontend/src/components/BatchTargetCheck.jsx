@@ -47,7 +47,7 @@ export function BatchTargetCheck({ batchId, dateFrom, dateTo }) {
               <h4 className="profile__name">{profile.name}</h4>
               <p className="profile__count">
                 {profile.measured === 0
-                  ? 'Ningún analito de este perfil se ha medido en la ventana elegida.'
+                  ? 'Ningún analito de este perfil se ha medido en el tramo consultado.'
                   : `${profile.within_range} de ${profile.measured} analitos medidos están dentro de rango.`}
               </p>
               <p className="batch__note">{profile.description}</p>

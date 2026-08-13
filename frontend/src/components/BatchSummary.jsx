@@ -39,7 +39,7 @@ export function BatchSummary({ batchId, dateFrom, dateTo }) {
 
       {data.total_liters === null ? (
         <p className="status">
-          Este lote no tiene producción registrada en la ventana elegida.
+          Este lote no tiene producción registrada en el tramo consultado.
         </p>
       ) : (
         <dl className="metrics">
@@ -72,7 +72,7 @@ export function BatchSummary({ batchId, dateFrom, dateTo }) {
 
       {data.milk_analytes.length === 0 ? (
         <p className="status">
-          No hay muestras de leche de este lote en la ventana elegida.
+          No hay muestras de leche de este lote en el tramo consultado.
         </p>
       ) : (
         <table>
