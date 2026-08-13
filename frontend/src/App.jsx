@@ -8,6 +8,11 @@ import { DateWindow } from './components/DateWindow.jsx'
 import { ErrorState } from './components/ErrorState.jsx'
 import { useApiResource } from './hooks/useApiResource.js'
 
+/** Un año de menos de cuatro cifras es un año a medio teclear, no una fecha. */
+function isPartialYear(value) {
+  return value !== '' && Number(value.slice(0, 4)) < 1000
+}
+
 function App() {
   const [batchId, setBatchId] = useState('')
   const [dateFrom, setDateFrom] = useState('')
@@ -21,7 +26,12 @@ function App() {
 
   // Comparar cadenas ISO equivale a comparar fechas, y es el único 400 que estos
   // controles pueden producir: el navegador emite fecha completa o cadena vacía.
-  const invalidWindow = dateFrom !== '' && dateTo !== '' && dateFrom > dateTo
+  const invertedWindow = dateFrom !== '' && dateTo !== '' && dateFrom > dateTo
+
+  // Camino de 2027 el campo emite 0002, 0020 y 0202, todas fechas legales que
+  // no invierten el rango: sin esto, teclear un año son tres consultas de más.
+  const partialWindow = isPartialYear(dateFrom) || isPartialYear(dateTo)
+  const unusableWindow = invertedWindow || partialWindow
 
   return (
     <main>
@@ -65,7 +75,7 @@ function App() {
           <DateWindow
             dateFrom={dateFrom}
             dateTo={dateTo}
-            invalid={invalidWindow}
+            invalid={unusableWindow}
             onDateFromChange={setDateFrom}
             onDateToChange={setDateTo}
             onReset={() => {
@@ -74,15 +84,16 @@ function App() {
             }}
           />
 
-          {invalidWindow ? (
+          {unusableWindow ? (
             <p className="status">
-              La fecha inicial es posterior a la final: corrige la ventana para volver a
-              consultar.
+              {invertedWindow
+                ? 'La fecha inicial es posterior a la final: corrige la ventana para volver a consultar.'
+                : 'El año de una de las fechas está a medio escribir: la consulta sale en cuanto esté completo.'}
             </p>
           ) : (
             <>
-              <BatchSummary batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
               <BatchTimeline batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
+              <BatchSummary batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
               <BatchTargetCheck batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
             </>
           )}

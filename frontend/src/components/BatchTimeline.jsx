@@ -42,6 +42,8 @@ export function BatchTimeline({ batchId, dateFrom, dateTo }) {
             )} · ${days} días con producción.`}
       </p>
 
+      <BatchRations rationPeriods={data.ration_periods} />
+
       {days > 0 && (
         <BatchChart
           window={data.window}
@@ -51,8 +53,6 @@ export function BatchTimeline({ batchId, dateFrom, dateTo }) {
           notice={data.milk_analytes_notice}
         />
       )}
-
-      <BatchRations rationPeriods={data.ration_periods} />
     </>
   )
 }
