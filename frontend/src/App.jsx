@@ -27,7 +27,11 @@ function App() {
     <main>
       <h1>Vista de lote</h1>
 
-      {isLoading && <p className="status">Cargando lotes…</p>}
+      {isLoading && (
+        <p className="status" role="status">
+          Cargando lotes…
+        </p>
+      )}
 
       {error && (
         <ErrorState

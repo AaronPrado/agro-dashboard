@@ -9,7 +9,12 @@ export function BatchSummary({ batchId, dateFrom, dateTo }) {
     dateTo,
   })
 
-  if (isLoading) return <p className="status">Cargando el resumen del lote…</p>
+  if (isLoading)
+    return (
+      <p className="status" role="status">
+        Cargando el resumen del lote…
+      </p>
+    )
 
   if (error) {
     return (
@@ -69,30 +74,32 @@ export function BatchSummary({ batchId, dateFrom, dateTo }) {
           No hay muestras de leche de este lote en el tramo consultado.
         </p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Analito</th>
-              <th scope="col" className="numeric">
-                Media
-              </th>
-              <th scope="col">Unidad</th>
-              <th scope="col" className="numeric">
-                Muestras
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.milk_analytes.map((analyte) => (
-              <tr key={analyte.code}>
-                <td>{analyte.name}</td>
-                <td className="numeric">{analyte.avg_value}</td>
-                <td>{analyte.unit}</td>
-                <td className="numeric">{analyte.samples}</td>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Analito</th>
+                <th scope="col" className="numeric">
+                  Media
+                </th>
+                <th scope="col">Unidad</th>
+                <th scope="col" className="numeric">
+                  Muestras
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.milk_analytes.map((analyte) => (
+                <tr key={analyte.code}>
+                  <td>{analyte.name}</td>
+                  <td className="numeric">{analyte.avg_value}</td>
+                  <td>{analyte.unit}</td>
+                  <td className="numeric">{analyte.samples}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   )

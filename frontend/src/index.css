@@ -29,6 +29,16 @@ table {
   border-collapse: collapse;
 }
 
+/* Una tabla estrecha apiña las columnas hasta hacerlas ilegibles, así que por
+   debajo de este ancho se desplaza en horizontal en vez de encogerse. */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.table-scroll table {
+  min-width: 30rem;
+}
+
 th,
 td {
   text-align: left;

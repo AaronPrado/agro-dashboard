@@ -11,7 +11,12 @@ export function BatchTimeline({ batchId, dateFrom, dateTo }) {
     dateTo,
   })
 
-  if (isLoading) return <p className="status">Cargando la serie del lote…</p>
+  if (isLoading)
+    return (
+      <p className="status" role="status">
+        Cargando la serie del lote…
+      </p>
+    )
 
   if (error) {
     return (
