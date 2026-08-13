@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react'
 import { listBatches } from './api/batches.js'
 import { BatchPicker } from './components/BatchPicker.jsx'
-import { BatchRations } from './components/BatchRations.jsx'
 import { BatchSummary } from './components/BatchSummary.jsx'
 import { BatchTargetCheck } from './components/BatchTargetCheck.jsx'
+import { BatchTimeline } from './components/BatchTimeline.jsx'
 import { DateWindow } from './components/DateWindow.jsx'
 import { useApiResource } from './hooks/useApiResource.js'
 
@@ -75,7 +75,7 @@ function App() {
             </p>
           ) : (
             <>
-              <BatchRations batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
+              <BatchTimeline batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
               <BatchSummary batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
               <BatchTargetCheck batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
             </>
