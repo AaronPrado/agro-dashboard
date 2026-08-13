@@ -79,18 +79,22 @@ export function BatchSummary({ batchId, dateFrom, dateTo }) {
           <thead>
             <tr>
               <th scope="col">Analito</th>
-              <th scope="col">Media</th>
+              <th scope="col" className="numeric">
+                Media
+              </th>
               <th scope="col">Unidad</th>
-              <th scope="col">Muestras</th>
+              <th scope="col" className="numeric">
+                Muestras
+              </th>
             </tr>
           </thead>
           <tbody>
             {data.milk_analytes.map((analyte) => (
               <tr key={analyte.code}>
                 <td>{analyte.name}</td>
-                <td>{analyte.avg_value}</td>
+                <td className="numeric">{analyte.avg_value}</td>
                 <td>{analyte.unit}</td>
-                <td>{analyte.samples}</td>
+                <td className="numeric">{analyte.samples}</td>
               </tr>
             ))}
           </tbody>
