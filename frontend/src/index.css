@@ -66,7 +66,8 @@ code {
   margin: 1rem 0;
 }
 
-.pagination button {
+.pagination button,
+.window button {
   font: inherit;
   padding: 0.4rem 0.9rem;
   border: 1px solid #b9c2cc;
@@ -75,11 +76,13 @@ code {
   cursor: pointer;
 }
 
-.pagination button:hover:not(:disabled) {
+.pagination button:hover:not(:disabled),
+.window button:hover:not(:disabled) {
   background-color: #eef1f5;
 }
 
-.pagination button:disabled {
+.pagination button:disabled,
+.window button:disabled {
   color: #9aa5b1;
   cursor: not-allowed;
 }
@@ -89,14 +92,17 @@ code {
   font-size: 0.9rem;
 }
 
-.picker {
+.picker,
+.window {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.75rem;
   margin: 1rem 0;
 }
 
-.picker select {
+.picker select,
+.window input {
   font: inherit;
   padding: 0.4rem 0.6rem;
   border: 1px solid #b9c2cc;
@@ -104,7 +110,8 @@ code {
   background-color: #fff;
 }
 
-.picker__label {
+.picker__label,
+.window__label {
   color: #52606d;
   font-size: 0.9rem;
 }
@@ -113,6 +120,48 @@ code {
   margin: -0.5rem 0 1rem;
   color: #52606d;
   font-size: 0.9rem;
+}
+
+.batch__title {
+  font-size: 1.15rem;
+  margin: 1.5rem 0 0.25rem;
+}
+
+.batch__section {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.batch__note {
+  margin: 0 0 0.75rem;
+  color: #52606d;
+  font-size: 0.9rem;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.metrics > div {
+  padding: 0.75rem;
+  border: 1px solid #dbe1e8;
+  border-radius: 0.375rem;
+  background-color: #fff;
+}
+
+.metrics dt {
+  color: #52606d;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.metrics dd {
+  margin: 0.25rem 0 0;
+  font-size: 1.25rem;
 }
 
 .status {

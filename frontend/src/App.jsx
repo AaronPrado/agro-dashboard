@@ -1,10 +1,14 @@
 import { useCallback, useState } from 'react'
 import { listBatches } from './api/batches.js'
 import { BatchPicker } from './components/BatchPicker.jsx'
+import { BatchSummary } from './components/BatchSummary.jsx'
+import { DateWindow } from './components/DateWindow.jsx'
 import { useApiResource } from './hooks/useApiResource.js'
 
 function App() {
   const [batchId, setBatchId] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   const request = useCallback((options) => listBatches({}, options), [])
   const { data: page, error, isLoading } = useApiResource(request)
@@ -39,7 +43,27 @@ function App() {
         </p>
       )}
 
-      {selected && <p className="status">Lote seleccionado: {selected.name}</p>}
+      {selected && (
+        <section>
+          <h2 className="batch__title">
+            {selected.name} · {selected.farm_name} ({selected.farm_code})
+          </h2>
+          <p className="batch__note">Ración vigente: {selected.current_ration ?? '—'}</p>
+
+          <DateWindow
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={setDateFrom}
+            onDateToChange={setDateTo}
+            onReset={() => {
+              setDateFrom('')
+              setDateTo('')
+            }}
+          />
+
+          <BatchSummary batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
+        </section>
+      )}
     </main>
   )
 }
