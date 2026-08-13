@@ -110,6 +110,10 @@ code {
   background-color: #fff;
 }
 
+.window input[aria-invalid='true'] {
+  border-color: #c0392b;
+}
+
 .picker__label,
 .window__label {
   color: #52606d;
@@ -162,6 +166,57 @@ code {
 .metrics dd {
   margin: 0.25rem 0 0;
   font-size: 1.25rem;
+}
+
+.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.profile {
+  margin: 1.25rem 0;
+}
+
+.profile__name {
+  font-size: 0.95rem;
+  margin: 0 0 0.25rem;
+}
+
+.profile__count {
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.badge--within {
+  background-color: #e3f4ea;
+  color: #0b6b3a;
+}
+
+.badge--below,
+.badge--above {
+  background-color: #fdf3e3;
+  color: #8a5a00;
+}
+
+.badge--no-data {
+  background-color: #eef1f5;
+  color: #52606d;
+}
+
+.notice {
+  margin: 1rem 0 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid #b9c2cc;
+  color: #52606d;
+  font-size: 0.85rem;
 }
 
 .status {

@@ -1,7 +1,9 @@
 import { useCallback, useState } from 'react'
 import { listBatches } from './api/batches.js'
 import { BatchPicker } from './components/BatchPicker.jsx'
+import { BatchRations } from './components/BatchRations.jsx'
 import { BatchSummary } from './components/BatchSummary.jsx'
+import { BatchTargetCheck } from './components/BatchTargetCheck.jsx'
 import { DateWindow } from './components/DateWindow.jsx'
 import { useApiResource } from './hooks/useApiResource.js'
 
@@ -15,6 +17,10 @@ function App() {
 
   const batches = page?.results ?? []
   const selected = batches.find((batch) => String(batch.id) === batchId) ?? null
+
+  // Comparar cadenas ISO equivale a comparar fechas, y es el único 400 que estos
+  // controles pueden producir: el navegador emite fecha completa o cadena vacía.
+  const invalidWindow = dateFrom !== '' && dateTo !== '' && dateFrom > dateTo
 
   return (
     <main>
@@ -53,6 +59,7 @@ function App() {
           <DateWindow
             dateFrom={dateFrom}
             dateTo={dateTo}
+            invalid={invalidWindow}
             onDateFromChange={setDateFrom}
             onDateToChange={setDateTo}
             onReset={() => {
@@ -61,7 +68,18 @@ function App() {
             }}
           />
 
-          <BatchSummary batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
+          {invalidWindow ? (
+            <p className="status">
+              La fecha inicial es posterior a la final: corrige la ventana para volver a
+              consultar.
+            </p>
+          ) : (
+            <>
+              <BatchRations batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
+              <BatchSummary batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
+              <BatchTargetCheck batchId={selected.id} dateFrom={dateFrom} dateTo={dateTo} />
+            </>
+          )}
         </section>
       )}
     </main>
