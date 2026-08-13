@@ -204,20 +204,24 @@ y ningún componente llama a `fetch` por su cuenta:
   un 500**: solo rechaza si la petición no llega a completarse. El fallo de red y
   el error HTTP desembocan ambos en un `ApiError` con su `status`, de modo que
   quien consume tiene un único camino de error.
-- **Un módulo por recurso** (`src/api/animals.js`, `src/api/farms.js`) declara
-  qué parámetros admite cada endpoint, en lista blanca. Añadir un filtro es un
-  cambio deliberado y visible, no un efecto colateral de lo que envíe el
-  llamante.
+- **Un módulo por recurso** (`src/api/batches.js`, `src/api/animals.js`,
+  `src/api/farms.js`) declara qué parámetros admite cada endpoint, en lista
+  blanca. Añadir un filtro es un cambio deliberado y visible, no un efecto
+  colateral de lo que envíe el llamante. Es además donde se traduce el
+  vocabulario de la API, de modo que ningún componente escriba `date_from`.
 - **`src/hooks/useApiResource.js` es el ciclo de vida de la petición** dentro de
   React: expone la carga, el error y el resultado, y limpia el efecto al
-  desmontar o al cambiar de parámetro.
+  desmontar o al cambiar de parámetro. `src/hooks/useBatchResource.js` lo
+  envuelve para los tres recursos del lote, que comparten firma: así la
+  estabilización de la petición se escribe una vez y no en cada llamada.
 
 Ese hook resuelve un problema que no es visible en el camino feliz: **una
 respuesta que llega tarde no puede pintarse sobre una petición más reciente**. Al
-cambiar de página, la petición anterior se aborta y el resultado que ya venía en
-camino se descarta, porque el estado guarda junto al dato la petición que lo
-produjo y solo se pinta lo que corresponde a la vigente. Así la pantalla nunca
-muestra datos de un parámetro distinto del que indica.
+cambiar de lote o de fechas, la petición anterior se aborta y el resultado que ya
+venía en camino se descarta, porque el estado guarda junto al dato la petición
+que lo produjo y solo se pinta lo que corresponde a la vigente. El aborto ahorra
+red; la corrección la da esa etiqueta, no el orden de llegada. Así la pantalla
+nunca muestra datos de un parámetro distinto del que indica.
 
 Los tres estados —cargando, error y vacío— son explícitos y distintos entre sí.
 El vacío lo decide cada pantalla y no el hook: "la API respondió y no hay nada"
@@ -227,6 +231,36 @@ cada carga.
 
 El cliente **no calcula**: medias, totales, conteos y los enlaces de paginación
 vienen resueltos del backend, y la pantalla se limita a pintarlos.
+
+### La vista de lote
+
+La pantalla del cliente responde cuatro preguntas sobre un lote de animales: qué
+come, qué produce, qué calidad de leche da y a qué destinos comerciales puede
+orientarse. Se elige el lote en un desplegable agrupado por explotación —con el
+código junto al nombre, porque **el nombre de una explotación no es único** y dos
+homónimas quedarían fundidas en un grupo— y, opcionalmente, una ventana de
+fechas.
+
+Cuatro decisiones de esa pantalla, que son las que explican lo que se ve:
+
+- **La ventana acota las series fechadas, no el censo.** El número de animales
+  del lote no cambia al mover las fechas, igual que en la API: preguntar cuántas
+  vacas hay no es una pregunta con fecha. Bajo los controles se indica el tramo
+  efectivo que se está mostrando y cuántos días con producción contiene, porque
+  el rango pedido puede ser más ancho que el dato disponible.
+- **Cada sección tiene su propia carga y su propio error.** Son tres peticiones
+  independientes, así que un fallo al comparar con los perfiles no borra la
+  producción ya pintada.
+- **Un rango invertido se detiene en el cliente**, con un aviso neutro junto a
+  los campos, en vez de viajar y volver como error: tecleando una fecha se pasa
+  por estados incompletos que no son un fallo del sistema. La validación del
+  backend sigue siendo el contrato y su error sigue teniendo camino en pantalla.
+- **La comparación no emite un veredicto.** Se listan todos los perfiles con el
+  detalle por analito y sus cuatro estados, donde *sin medir* se distingue
+  visualmente de *por debajo*: no haber medido no es incumplir. La salvedad que
+  acompaña al resultado —que depende de la ventana consultada y que los umbrales
+  son una interpretación de esta propuesta, no la exigencia de un comprador— se
+  pinta junto a la comparación, no solo viaja en el JSON.
 
 ## API
 
