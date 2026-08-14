@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 790" width="1200" height="790" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <style>
+    .bx { stroke: #55606e; stroke-width: 1.2 }
+    .nm { font-size: 13.5px; font-weight: 600; fill: #16202c }
+    .sb { font-size: 10.5px; fill: #5f6b78 }
+    .ln { fill: none; stroke: #7a8695; stroke-width: 1.4 }
+    .xr { fill: none; stroke: #b45309; stroke-width: 1.4; stroke-dasharray: 5 4 }
+    .cd { font-size: 10px; fill: #45505c; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round }
+    .cx { font-size: 10px; fill: #8a4a08; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round }
+    .bd { font-size: 11px; font-weight: 600; fill: #8a94a0; letter-spacing: .08em }
+  </style>
+
+  <rect x="0" y="0" width="1200" height="790" fill="#ffffff"/>
+
+  <!-- bandas -->
+  <text class="bd" x="270" y="26">CADENA AGRÍCOLA</text>
+  <text class="bd" x="500" y="146">RACIÓN</text>
+  <text class="bd" x="500" y="286">LOTE</text>
+  <text class="bd" x="270" y="526">ANIMAL Y SERIES</text>
+
+  <!-- conectores: primero las líneas, para que las cajas queden encima -->
+  <path class="ln" d="M130,300 V64 H270"/>
+  <path class="ln" d="M220,312 H240 V184 H500"/>
+  <path class="ln" d="M220,328 H500"/>
+  <path class="ln" d="M130,348 V564 H270"/>
+
+  <path class="ln" d="M450,64 H500"/>
+  <path class="ln" d="M680,64 H730"/>
+  <path class="ln" d="M910,64 H960"/>
+
+  <path class="xr" d="M820,88 V160"/>
+  <path class="xr" d="M960,184 H910"/>
+  <path class="ln" d="M680,184 H730"/>
+
+  <path class="ln" d="M680,324 H730"/>
+  <path class="ln" d="M820,300 V270 H590 V208"/>
+  <path class="ln" d="M680,336 H705 V444 H730"/>
+  <path class="ln" d="M590,348 V540"/>
+
+  <path class="ln" d="M450,564 H500"/>
+  <path class="ln" d="M340,588 V684 H500"/>
+  <path class="ln" d="M380,588 V740 H820 V708"/>
+
+  <!-- cardinalidades -->
+  <text class="cd" x="139" y="292">1</text>
+  <text class="cd" x="259" y="56">N</text>
+  <text class="cd" x="229" y="304">1</text>
+  <text class="cd" x="490" y="176">N</text>
+  <text class="cd" x="229" y="321">1</text>
+  <text class="cd" x="490" y="321">N</text>
+  <text class="cd" x="139" y="363">1</text>
+  <text class="cd" x="259" y="557">N</text>
+
+  <text class="cd" x="458" y="56">1</text>
+  <text class="cd" x="486" y="56">N</text>
+  <text class="cd" x="688" y="56">1</text>
+  <text class="cd" x="716" y="56">N</text>
+  <text class="cd" x="918" y="56">1</text>
+  <text class="cd" x="946" y="56">N</text>
+
+  <text class="cx" x="830" y="102">0..1</text>
+  <text class="cx" x="830" y="154">N</text>
+  <text class="cx" x="930" y="199">0..1</text>
+  <text class="cx" x="916" y="176">N</text>
+  <text class="cd" x="688" y="176">1</text>
+  <text class="cd" x="716" y="176">N</text>
+
+  <text class="cd" x="688" y="316">1</text>
+  <text class="cd" x="716" y="316">N</text>
+  <text class="cd" x="599" y="222">1</text>
+  <text class="cd" x="830" y="292">N</text>
+  <text class="cd" x="712" y="362">1</text>
+  <text class="cd" x="712" y="437">N</text>
+  <text class="cd" x="599" y="362">1</text>
+  <text class="cd" x="599" y="532">N</text>
+
+  <text class="cd" x="458" y="556">1</text>
+  <text class="cd" x="486" y="556">N</text>
+  <text class="cd" x="349" y="602">1</text>
+  <text class="cd" x="486" y="677">N</text>
+  <text class="cd" x="389" y="602">1</text>
+  <text class="cd" x="830" y="723">N</text>
+
+  <!-- cajas -->
+  <g>
+    <rect class="bx" x="40" y="300" width="180" height="48" rx="6" fill="#e6edf7"/>
+    <text class="nm" x="130" y="322" text-anchor="middle">Farm</text>
+    <text class="sb" x="130" y="338" text-anchor="middle">explotación</text>
+  </g>
+
+  <g>
+    <rect class="bx" x="270" y="40" width="180" height="48" rx="6" fill="#e9f4e7"/>
+    <text class="nm" x="360" y="62" text-anchor="middle">Plot</text>
+    <text class="sb" x="360" y="78" text-anchor="middle">parcela</text>
+  </g>
+  <g>
+    <rect class="bx" x="500" y="40" width="180" height="48" rx="6" fill="#e9f4e7"/>
+    <text class="nm" x="590" y="62" text-anchor="middle">Crop</text>
+    <text class="sb" x="590" y="78" text-anchor="middle">cultivo · campaña</text>
+  </g>
+  <g>
+    <rect class="bx" x="730" y="40" width="180" height="48" rx="6" fill="#e9f4e7"/>
+    <text class="nm" x="820" y="62" text-anchor="middle">Silage</text>
+    <text class="sb" x="820" y="78" text-anchor="middle">ensilado · silo</text>
+  </g>
+  <g>
+    <rect class="bx" x="960" y="40" width="180" height="48" rx="6" fill="#e9f4e7"/>
+    <text class="nm" x="1050" y="62" text-anchor="middle">NIRAnalysis</text>
+    <text class="sb" x="1050" y="78" text-anchor="middle">análisis NIR</text>
+  </g>
+
+  <g>
+    <rect class="bx" x="500" y="160" width="180" height="48" rx="6" fill="#fdf1e0"/>
+    <text class="nm" x="590" y="182" text-anchor="middle">Ration</text>
+    <text class="sb" x="590" y="198" text-anchor="middle">ración formulada</text>
+  </g>
+  <g>
+    <rect class="bx" x="730" y="160" width="180" height="48" rx="6" fill="#fdf1e0"/>
+    <text class="nm" x="820" y="182" text-anchor="middle">RationIngredient</text>
+    <text class="sb" x="820" y="198" text-anchor="middle">ingrediente · kg de MS</text>
+  </g>
+  <g>
+    <rect class="bx" x="960" y="160" width="180" height="48" rx="6" fill="#fdf1e0"/>
+    <text class="nm" x="1050" y="182" text-anchor="middle">RawMaterial</text>
+    <text class="sb" x="1050" y="198" text-anchor="middle">materia prima</text>
+  </g>
+
+  <g>
+    <rect class="bx" x="500" y="300" width="180" height="48" rx="6" fill="#e4eefb"/>
+    <text class="nm" x="590" y="322" text-anchor="middle">AnimalBatch</text>
+    <text class="sb" x="590" y="338" text-anchor="middle">lote de animales</text>
+  </g>
+  <g>
+    <rect class="bx" x="730" y="300" width="180" height="48" rx="6" fill="#e4eefb"/>
+    <text class="nm" x="820" y="322" text-anchor="middle">BatchRation</text>
+    <text class="sb" x="820" y="338" text-anchor="middle">ración del lote · fechada</text>
+  </g>
+  <g>
+    <rect class="bx" x="730" y="420" width="180" height="48" rx="6" fill="#e4eefb"/>
+    <text class="nm" x="820" y="442" text-anchor="middle">BatchMilkSample</text>
+    <text class="sb" x="820" y="458" text-anchor="middle">muestra de leche del lote</text>
+  </g>
+  <g>
+    <rect class="bx" x="500" y="540" width="180" height="48" rx="6" fill="#e4eefb"/>
+    <text class="nm" x="590" y="562" text-anchor="middle" font-size="12">AnimalBatchMembership</text>
+    <text class="sb" x="590" y="578" text-anchor="middle">pertenencia · fechada</text>
+  </g>
+
+  <g>
+    <rect class="bx" x="270" y="540" width="180" height="48" rx="6" fill="#f1ebf9"/>
+    <text class="nm" x="360" y="562" text-anchor="middle">Animal</text>
+    <text class="sb" x="360" y="578" text-anchor="middle">vaca · crotal</text>
+  </g>
+  <g>
+    <rect class="bx" x="500" y="660" width="180" height="48" rx="6" fill="#f1ebf9"/>
+    <text class="nm" x="590" y="682" text-anchor="middle">DailyYield</text>
+    <text class="sb" x="590" y="698" text-anchor="middle">producción diaria</text>
+  </g>
+  <g>
+    <rect class="bx" x="730" y="660" width="180" height="48" rx="6" fill="#f1ebf9"/>
+    <text class="nm" x="820" y="682" text-anchor="middle">MilkRecord</text>
+    <text class="sb" x="820" y="698" text-anchor="middle">control lechero individual</text>
+  </g>
+
+  <!-- leyenda -->
+  <g>
+    <rect x="40" y="620" width="200" height="118" rx="6" fill="#fafbfc" stroke="#d3d9e0" stroke-width="1"/>
+    <text x="56" y="642" font-size="11" font-weight="600" fill="#45505c">Cómo se lee</text>
+    <path class="ln" d="M56,662 H86"/>
+    <text class="cd" x="58" y="656">1</text>
+    <text class="cd" x="84" y="656">N</text>
+    <text x="96" y="666" font-size="10.5" fill="#5f6b78">uno a varios</text>
+    <path class="xr" d="M56,692 H86"/>
+    <text x="96" y="682" font-size="10.5" fill="#8a4a08">referencias excluyentes:</text>
+    <text x="96" y="696" font-size="10.5" fill="#8a4a08">exactamente una de las dos</text>
+    <text x="56" y="722" font-size="10.5" fill="#5f6b78">«fechada» = tabla intermedia</text>
+    <text x="56" y="734" font-size="10.5" fill="#5f6b78">con desde / hasta</text>
+  </g>
+</svg>

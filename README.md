@@ -2,12 +2,16 @@
 
 Dashboard de producción lechera para granjas de vacuno: una API en **Django REST
 Framework** sobre **PostgreSQL** con datos realistas, y un frontend en **React**
-que los visualiza. Proyecto de portfolio orientado a mostrar un flujo completo de
-datos, desde su generación hasta su representación gráfica.
+que los visualiza. Lo que demuestra el proyecto es una **línea continua de datos
+desde la parcela de cultivo hasta la calidad de la leche**, entrando por cinco
+formatos de origen distintos y saliendo por una sola pantalla.
 
-> ⚠️ **Estado: en construcción.** El backend es funcional —modelo de datos,
-> generador, ingesta multifuente y API de lectura—; los endpoints agregados y el
-> frontend aún no están implementados.
+> **Estado.** El recorrido está completo de la base de datos a la pantalla:
+> modelo de datos, generador reproducible, ingesta multifuente con procedencia,
+> API de lectura con endpoints agregados y un cliente web que consume la API real.
+> **Queda deliberadamente fuera** —y se explica más abajo dónde toca—:
+> autenticación y permisos, orquestación de las cargas, y endpoints propios para
+> los modelos de la cadena agrícola que hoy no pinta ninguna pantalla.
 
 ## Dominio
 
@@ -47,6 +51,24 @@ otro.
   par analito/resultado que el análisis NIR. Convive con el control lechero
   individual porque responde a otra pregunta: la ración se asigna al lote, así
   que es en el lote donde tratamiento y respuesta coinciden.
+
+### El esquema
+
+Los veintiún modelos y sus cardinalidades. Notación: `1`—`N` es uno a varios, y la
+línea discontinua marca las dos referencias **excluyentes**, donde exactamente una
+de las dos tiene valor.
+
+![Esquema entidad-relación: de la parcela a la producción y la calidad de la leche](docs/img/esquema-hilo.svg)
+
+Lo que este esquema muestra y la lista de arriba no puede: que las dos tablas
+intermedias —pertenencia a un lote y ración del lote— **llevan fechas, y por eso
+son tablas**; sin ellas el sistema solo sabría responder por el presente.
+
+La analítica y el registro de procedencia van aparte porque no pertenecen a ninguna
+de las dos mitades: el mismo par analito/resultado sirve para el forraje y para la
+leche, y cada fila de hecho apunta a la carga que la escribió.
+
+![Esquema de la analítica por analito, los perfiles de destino y el registro de cargas de datos](docs/img/esquema-analitica-traza.svg)
 
 Las reglas que no deben violarse nunca —un crotal no repetido dentro de la misma
 granja, un único registro de producción por animal y día, litros y porcentajes no
@@ -104,7 +126,10 @@ reproducible mediante un comando de gestión, no con datos escritos a mano.
 
 ## Puesta en marcha
 
-Requisitos: Docker y Docker Compose.
+Requisitos: **Docker y Docker Compose** para el backend y la base de datos, y
+**Node** en la versión que fija `frontend/.nvmrc` para el cliente web (pasos 1 a 3
+y paso 4, respectivamente). Para enganchar el `pre-commit` del apartado
+*Desarrollo* hace falta además `uv` en el host.
 
 1. **Configura el entorno.** La configuración sensible se lee de variables de
    entorno; `.env` no se versiona y `.env.example` sirve de plantilla:
@@ -248,6 +273,18 @@ código junto al nombre, porque **el nombre de una explotación no es único** y
 homónimas quedarían fundidas en un grupo— y, opcionalmente, una ventana de
 fechas.
 
+![Cabecera de la vista de lote: selector agrupado por explotación, campos de fecha, el tramo efectivo mostrado y la tabla de raciones con sus periodos](docs/img/vista-lote-cabecera.png)
+
+> Las capturas de este apartado salen de los datos que produce `make seed` con la
+> semilla por defecto, así que son reproducibles: mismo lote, mismas cifras. Todas
+> corresponden al lote *Alta producción* de la explotación A Ponte **sin ventana de
+> fechas**, es decir, sobre los doce meses completos.
+
+Las cuatro raciones de la tabla se llaman igual y no son la misma: **reformular
+crea una ración nueva en lugar de editar la vigente**, así que lo que las
+distingue es la fecha de formulación. Es la razón de que la API entregue el
+identificador y esa fecha además del nombre.
+
 Cuatro decisiones de esa pantalla, que son las que explican lo que se ve:
 
 - **La ventana acota las series fechadas, no el censo.** El número de animales
@@ -277,6 +314,16 @@ ración con el color que marca también su fila en la tabla de alimentación. Es
 pantalla donde se ve si un cambio de ración va seguido de un cambio en la
 composición de la leche.
 
+![Serie temporal del lote: producción diaria arriba y analito de leche abajo, sobre bandas de color que marcan cada periodo de ración, con el aviso de dato sintético y los supuestos desplegados](docs/img/vista-lote-grafica.png)
+
+En la captura se ve **el efecto tal y como es**: un escalón, no un gradiente. El
+analito se mantiene pegado al techo de su rango publicado durante el primer
+periodo de ración y cae al suelo en el siguiente, sin valores intermedios. Es la
+consecuencia directa de cómo está plantada la relación, y por eso el aviso y los
+supuestos van en la propia pantalla y no en una nota al pie: quien mire la gráfica
+tiene delante a la vez el patrón y la advertencia de que el patrón está puesto ahí
+a propósito.
+
 - **Cada serie conserva su grano y por eso son dos gráficos, no dos líneas en
   uno.** La producción es diaria y la muestra de leche un hecho mensual;
   superponerlas obligaría a rellenar los días sin muestra con un valor que nadie
@@ -296,6 +343,28 @@ composición de la leche.
   que la pantalla asume que la leche se muestrea por lote y que el rebaño se
   ordeña en sala con una única ración por lote; y que cada muestra es un hecho en
   su fecha y no un valor vigente todo el mes.
+
+#### Las cifras y los destinos
+
+Bajo la gráfica, el lote resumido en números y su perfil analítico medio. Todo
+llega calculado del backend: la pantalla no promedia nada.
+
+![Cifras agregadas del lote —litros totales, media diaria por animal, grasa, proteína y controles sobre el límite de células— y tabla del perfil analítico de la leche](docs/img/vista-lote-produccion-calidad.png)
+
+El contador de células somáticas se lee **«0 de 153»** y no «0»: sin el
+denominador, un cero no distingue *ninguno supera el límite* de *no se midió*.
+
+Y por último la comparación contra el catálogo de destinos comerciales:
+
+![Comparación del lote contra los tres perfiles de destino, con lo medido, lo exigido y el estado de cada analito, y la salvedad final sobre la ventana y los umbrales](docs/img/vista-lote-perfiles.png)
+
+Sobre los doce meses completos **el lote no alcanza ninguno de los tres destinos**,
+y la captura se ha tomado así a propósito. Con una ventana de septiembre a
+diciembre los mismos analitos entran en rango en los tres perfiles: la ración de un
+lote cambia a lo largo del año y su leche con ella, de modo que un resultado
+promediado sobre todo el año no describe ningún régimen. Es exactamente lo que
+declara la salvedad del pie, y enseñar el caso favorable sin decirlo sería vender
+como propiedad del lote algo que es propiedad de la ventana elegida.
 
 ## API
 
@@ -469,7 +538,10 @@ make lint && make test
 
 Además hay un `pre-commit` que pasa `ruff` en el host antes de cada commit
 (engánchalo una vez con `cd backend && uv run pre-commit install`), y una CI de
-GitHub Actions que corre lint y tests en cada push y pull request.
+GitHub Actions que corre en cada push y pull request con **dos trabajos en
+paralelo**: *Backend* (`ruff` y `pytest` dentro del contenedor) y *Frontend*
+(ESLint y build de producción del cliente). Al ir separados, un fallo dice de qué
+mitad viene sin abrir el registro.
 
 ## Licencia
 
