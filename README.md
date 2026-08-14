@@ -52,6 +52,24 @@ otro.
   individual porque responde a otra pregunta: la ración se asigna al lote, así
   que es en el lote donde tratamiento y respuesta coinciden.
 
+### El esquema
+
+Los veintiún modelos y sus cardinalidades. Notación: `1`—`N` es uno a varios, y la
+línea discontinua marca las dos referencias **excluyentes**, donde exactamente una
+de las dos tiene valor.
+
+![Esquema entidad-relación: de la parcela a la producción y la calidad de la leche](docs/img/esquema-hilo.svg)
+
+Lo que este esquema muestra y la lista de arriba no puede: que las dos tablas
+intermedias —pertenencia a un lote y ración del lote— **llevan fechas, y por eso
+son tablas**; sin ellas el sistema solo sabría responder por el presente.
+
+La analítica y el registro de procedencia van aparte porque no pertenecen a ninguna
+de las dos mitades: el mismo par analito/resultado sirve para el forraje y para la
+leche, y cada fila de hecho apunta a la carga que la escribió.
+
+![Esquema de la analítica por analito, los perfiles de destino y el registro de cargas de datos](docs/img/esquema-analitica-traza.svg)
+
 Las reglas que no deben violarse nunca —un crotal no repetido dentro de la misma
 granja, un único registro de producción por animal y día, litros y porcentajes no
 negativos— se declaran como restricciones en la propia base de datos, de modo que
