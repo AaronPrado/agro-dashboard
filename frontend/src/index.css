@@ -1,8 +1,35 @@
+/* El acento es el azul de la serie de producción y el positivo el verde de la
+   serie de calidad. Ambos se definen en BatchChart.jsx, porque Recharts recibe
+   los colores como props: anclarlos aquí evita que la interfaz y el gráfico
+   deriven a dos cromatismos distintos. */
 :root {
+  --canvas: #f7f8fa;
+  --surface: #fff;
+  --wash: #eef1f5;
+  --ink: #1f2933;
+  --muted: #52606d;
+  --faint: #9aa5b1;
+  --line: #dbe1e8;
+  --line-strong: #b9c2cc;
+  --accent: #2b6cb0;
+  --positive-bg: #e3f4ea;
+  --positive-line: #bfe3cf;
+  --positive-ink: #0b6b3a;
+  --warn-bg: #fdf3e3;
+  --warn-line: #f0dcb4;
+  --warn-ink: #8a5a00;
+  --error-bg: #fdeceb;
+  --error-line: #f5cfcb;
+  --error-ink: #8a1c11;
+  --radius: 0.375rem;
+  --radius-card: 0.5rem;
+  --shadow: 0 1px 2px rgb(31 41 51 / 6%);
+
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
-  color: #1f2933;
-  background-color: #f7f8fa;
+  color: var(--ink);
+  background-color: var(--canvas);
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -11,17 +38,21 @@
 
 body {
   margin: 0;
-  padding: 2rem 1rem;
+  padding: 2.5rem 1.25rem 4rem;
 }
 
 #root {
-  max-width: 60rem;
+  max-width: 64rem;
   margin: 0 auto;
 }
 
 h1 {
-  font-size: 1.6rem;
-  margin: 0 0 0.25rem;
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
 }
 
 table {
@@ -33,6 +64,10 @@ table {
    debajo de este ancho se desplaza en horizontal en vez de encogerse. */
 .table-scroll {
   overflow-x: auto;
+  background-color: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
 }
 
 .table-scroll table {
@@ -42,19 +77,25 @@ table {
 th,
 td {
   text-align: left;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #dbe1e8;
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid var(--line);
 }
 
 th {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: #52606d;
+  color: var(--muted);
+  background-color: var(--wash);
+  white-space: nowrap;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 tbody tr:hover {
-  background-color: #eef1f5;
+  background-color: var(--wash);
 }
 
 code {
@@ -66,15 +107,21 @@ code {
 .status--error button {
   font: inherit;
   padding: 0.4rem 0.9rem;
-  border: 1px solid #b9c2cc;
-  border-radius: 0.375rem;
-  background-color: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background-color: var(--surface);
+  box-shadow: var(--shadow);
   cursor: pointer;
 }
 
 .window button:hover:not(:disabled),
 .status--error button:hover {
-  background-color: #eef1f5;
+  background-color: var(--wash);
+}
+
+.window button:active:not(:disabled),
+.status--error button:active {
+  box-shadow: none;
 }
 
 .status--error button {
@@ -82,8 +129,19 @@ code {
 }
 
 .window button:disabled {
-  color: #9aa5b1;
+  color: var(--faint);
+  box-shadow: none;
   cursor: not-allowed;
+}
+
+/* El anillo de foco se dibuja aparte del borde para que siga viéndose sobre los
+   controles que ya tienen uno. */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .picker,
@@ -99,40 +157,51 @@ code {
 .window input {
   font: inherit;
   padding: 0.4rem 0.6rem;
-  border: 1px solid #b9c2cc;
-  border-radius: 0.375rem;
-  background-color: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background-color: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.picker select {
+  cursor: pointer;
 }
 
 .window input[aria-invalid='true'] {
-  border-color: #c0392b;
+  border-color: var(--error-ink);
 }
 
 .picker__label,
 .window__label {
-  color: #52606d;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
 .picker__note {
   margin: -0.5rem 0 1rem;
-  color: #52606d;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
 .batch__title {
-  font-size: 1.15rem;
-  margin: 1.5rem 0 0.25rem;
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 2rem 0 0.25rem;
 }
 
+/* Las secciones del lote son hermanas planas, sin contenedor propio: el filete
+   sobre el encabezado es lo que las separa a la vista. */
 .batch__section {
-  font-size: 1rem;
-  margin: 1.5rem 0 0.5rem;
+  font-size: 1.05rem;
+  margin: 2.25rem 0 0.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
 }
 
 .batch__note {
   margin: 0 0 0.75rem;
-  color: #52606d;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
@@ -144,22 +213,33 @@ code {
 }
 
 .metrics > div {
-  padding: 0.75rem;
-  border: 1px solid #dbe1e8;
-  border-radius: 0.375rem;
-  background-color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background-color: var(--surface);
+  box-shadow: var(--shadow);
 }
 
 .metrics dt {
-  color: #52606d;
+  margin-bottom: 0.35rem;
+  color: var(--muted);
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  text-wrap: balance;
 }
 
+/* Los rótulos ocupan una o dos líneas según su largo, así que el valor se ancla
+   a la base de la tarjeta: de lo contrario cada uno cuelga de su rótulo y los
+   cinco quedan a alturas distintas. */
 .metrics dd {
-  margin: 0.25rem 0 0;
-  font-size: 1.25rem;
+  margin: auto 0 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 .numeric {
@@ -168,53 +248,69 @@ code {
 }
 
 .profile {
-  margin: 1.25rem 0;
+  margin: 1.5rem 0;
+}
+
+.profile + .profile {
+  padding-top: 1.5rem;
+  border-top: 1px dashed var(--line);
 }
 
 .profile__name {
-  font-size: 0.95rem;
+  font-size: 1rem;
+  font-weight: 600;
   margin: 0 0 0.25rem;
 }
 
 .profile__count {
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.5rem;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
 .badge {
   display: inline-block;
   padding: 0.15rem 0.5rem;
+  border: 1px solid transparent;
   border-radius: 999px;
   font-size: 0.8rem;
   white-space: nowrap;
 }
 
 .badge--within {
-  background-color: #e3f4ea;
-  color: #0b6b3a;
+  background-color: var(--positive-bg);
+  border-color: var(--positive-line);
+  color: var(--positive-ink);
 }
 
 .badge--below,
 .badge--above {
-  background-color: #fdf3e3;
-  color: #8a5a00;
+  background-color: var(--warn-bg);
+  border-color: var(--warn-line);
+  color: var(--warn-ink);
 }
 
 .badge--no-data {
-  background-color: #eef1f5;
-  color: #52606d;
+  background-color: var(--wash);
+  border-color: var(--line);
+  color: var(--muted);
 }
 
 .notice {
   margin: 1rem 0 0;
   padding-left: 0.75rem;
-  border-left: 3px solid #b9c2cc;
-  color: #52606d;
+  border-left: 3px solid var(--line-strong);
+  color: var(--muted);
   font-size: 0.85rem;
 }
 
 .chart {
   margin: 0 0 1rem;
+  padding: 0.85rem 0.85rem 0.25rem;
+  background-color: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
 }
 
 .band {
@@ -222,7 +318,7 @@ code {
   width: 0.75rem;
   height: 0.75rem;
   margin-right: 0.5rem;
-  border: 1px solid #b9c2cc;
+  border: 1px solid var(--line-strong);
   border-radius: 0.2rem;
   vertical-align: -0.1rem;
 }
@@ -230,15 +326,22 @@ code {
 .reading {
   margin: 0.5rem 0 1rem;
   padding: 0.75rem;
-  border: 1px solid #dbe1e8;
-  border-radius: 0.375rem;
-  background-color: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background-color: var(--surface);
+  box-shadow: var(--shadow);
   font-size: 0.9rem;
 }
 
 .reading summary {
   cursor: pointer;
-  color: #52606d;
+  color: var(--muted);
+}
+
+.reading[open] summary {
+  margin-bottom: 0.25rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .reading ul {
@@ -251,14 +354,17 @@ code {
 }
 
 .status {
-  padding: 1rem;
-  border-radius: 0.375rem;
-  background-color: #eef1f5;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background-color: var(--wash);
+  color: var(--muted);
 }
 
 .status--error {
-  background-color: #fdeceb;
-  color: #8a1c11;
+  background-color: var(--error-bg);
+  border-color: var(--error-line);
+  color: var(--error-ink);
 }
 
 .status__detail {
