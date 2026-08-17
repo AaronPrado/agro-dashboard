@@ -366,6 +366,26 @@ promediado sobre todo el año no describe ningún régimen. Es exactamente lo qu
 declara la salvedad del pie, y enseñar el caso favorable sin decirlo sería vender
 como propiedad del lote algo que es propiedad de la ventana elegida.
 
+Entre esos dos extremos está el caso que mejor explica para qué sirve el catálogo.
+Con la ventana de septiembre de 2025 a febrero de 2026, que atraviesa el cambio de
+ración, el veredicto se reparte:
+
+![El mismo lote con una ventana que atraviesa el cambio de ración: el perfil graso cumple en un analito de dos, el de antioxidantes en ninguno y el de queso azul en los cuatro](docs/img/vista-lote-perfiles-ventana.png)
+
+El ácido linoleico conjugado entra en el tercio superior de su rango (1,4717 sobre
+un mínimo de 1,4490) y el α-linolénico se queda por debajo (1,0683 frente a
+1,0825), así que el destino de perfil graso sale **1 de 2**. Los dos antioxidantes
+tampoco alcanzan su tercio superior, y por poco: 14,5033 frente a 14,5500 y 6,7000
+frente a 6,7630. Pero **esos mismos valores sí superan la mitad del rango**, que es
+lo que pide el queso azul, y ahí el lote sale **4 de 4**.
+
+De modo que el mismo lote, con las mismas seis muestras y sin cambiar ningún dato,
+sirve para un destino y no para otro. Esa es la respuesta que da el catálogo y la
+razón de que no exista ningún campo de «apto»: la pregunta útil no es si la leche
+aprueba, sino a qué se la puede orientar. Los dos casos que fallan por menos de una
+décima enseñan además el límite de la comparación —un estado binario no dice a qué
+distancia se quedó—, y esa distancia es información que un comprador querría ver.
+
 ## API
 
 Todos los endpoints son de **solo lectura**: los datos entran por la capa de
