@@ -52,7 +52,7 @@ TARGET_CHECK_NOTICE = (
     "El resultado es relativo a la ventana consultada: la ración de un lote "
     "cambia a lo largo del año y la composición de su leche con ella. Los "
     "umbrales de cada perfil se derivan del rango publicado de cada analito y "
-    "son una interpretación de esta propuesta, no la exigencia de un comprador."
+    "son una interpretación de este proyecto, no la exigencia de un comprador."
 )
 
 

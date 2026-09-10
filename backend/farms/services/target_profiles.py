@@ -4,7 +4,7 @@ Catálogo que mantiene la plataforma, no un hecho que entregue ninguna fuente.
 Por eso ni el perfil ni sus rangos llevan procedencia, y su carga tiene firma
 propia sin carga de ingesta asociada.
 
-Los umbrales son interpretación de esta propuesta, no un requisito de ningún
+Los umbrales son interpretación de este proyecto, no un requisito de ningún
 comprador real: un destino comercial se describe en el sector por raza y manejo
 —queso azul de quesería artesana con leche de vaca en pastoreo—, no por umbrales
 analíticos, y traducirlo a rangos por analito es la decisión que se modela aquí.
