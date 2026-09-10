@@ -143,7 +143,7 @@ class TargetProfileViewSet(viewsets.ReadOnlyModelViewSet):
     """Consulta del catálogo de perfiles de destino comercial.
 
     Que los umbrales se puedan leer es parte de declararlos: son interpretación
-    de esta propuesta, y un criterio que no se puede consultar no se puede
+    de este proyecto, y un criterio que no se puede consultar no se puede
     discutir.
     """
 

@@ -273,7 +273,7 @@ class TargetProfileSerializer(serializers.ModelSerializer):
     """Perfil de destino comercial con sus rangos objetivo.
 
     `description` no es adorno: es donde se lee de dónde salen los umbrales y
-    que son una interpretación de esta propuesta.
+    que son una interpretación de este proyecto.
     """
 
     ranges = TargetRangeSerializer(many=True, read_only=True)

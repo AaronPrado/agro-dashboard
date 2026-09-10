@@ -230,7 +230,7 @@ export function BatchChart({
                 <strong>La gráfica supone que la leche se muestrea por lote.</strong> Ese dato
                 puede venir de un muestreo específico, de un segundo tanque, o de agregar por
                 lote el análisis por vaca de un robot de ordeño — esta última vía es la misma
-                integración de datos que sostiene el resto de la propuesta.
+                integración de datos que sostiene el resto del proyecto.
               </li>
               <li>
                 <strong>Supone también sala de ordeño con una única ración por lote.</strong>{' '}

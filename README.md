@@ -303,7 +303,7 @@ Cuatro decisiones de esa pantalla, que son las que explican lo que se ve:
   detalle por analito y sus cuatro estados, donde *sin medir* se distingue
   visualmente de *por debajo*: no haber medido no es incumplir. La salvedad que
   acompaña al resultado —que depende de la ventana consultada y que los umbrales
-  son una interpretación de esta propuesta, no la exigencia de un comprador— se
+  son una interpretación de este proyecto, no la exigencia de un comprador— se
   pinta junto a la comparación, no solo viaja en el JSON.
 
 #### La gráfica del hilo
